@@ -1,0 +1,27 @@
+[package]
+name = "dinopod"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Isolated per-ticket local development environments with Git worktrees, Docker Compose, and Traefik file-provider routing."
+repository = "https://github.com/dinogomez/dinopod"
+publish = false
+
+[dependencies]
+clap = { version = "4.5.53", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+toml = "1.1.2"
+
+[dev-dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+future_incompatible = { level = "warn", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+
+[lints.clippy]
+all = { level = "deny", priority = 10 }
+perf = { level = "deny", priority = 9 }
+pedantic = { level = "warn", priority = 1 }
