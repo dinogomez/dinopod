@@ -2,7 +2,9 @@ use std::cell::RefCell;
 use std::io;
 use std::path::Path;
 
-use dinopod::cmd::{CommandOutput, CommandRunner, CommandSpec};
+use dinopod::cmd::{
+    docker_command_failed, git_command_failed, CommandOutput, CommandRunner, CommandSpec,
+};
 
 #[derive(Debug, Default)]
 struct RecordingRunner {
@@ -44,4 +46,14 @@ fn command_runner_boundary_should_capture_command_shape_without_trait_objects() 
         command.environment(),
         [("GIT_TERMINAL_PROMPT".to_owned(), "0".to_owned())]
     );
+}
+
+#[test]
+fn command_failure_helpers_should_map_to_dinopod_errors() {
+    let output = CommandOutput::failed(Some(1), "", "boom");
+    let docker_error = docker_command_failed(vec!["compose".to_owned(), "up".to_owned()], &output);
+    let git_error = git_command_failed(vec!["status".to_owned()], &output);
+
+    assert!(docker_error.to_string().contains("docker command failed"));
+    assert!(git_error.to_string().contains("git command failed"));
 }

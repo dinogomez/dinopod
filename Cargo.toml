@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Isolated per-ticket local development environments with Git worktrees, Docker Compose, and Traefik file-provider routing."
-repository = "https://github.com/dinopod/dinopod"
+repository = "https://github.com/dinogomez/dinopod"
 publish = false
 
 [dependencies]

@@ -4,6 +4,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
+use crate::errors::DinopodError;
+
 /// A fully described external command invocation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommandSpec {
@@ -157,6 +159,32 @@ pub trait CommandRunner {
 /// Production command runner backed by [`std::process::Command`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StdCommandRunner;
+
+/// Returns a display string for `path` in external command arguments.
+#[must_use]
+pub fn path_display(path: &Path) -> String {
+    path.display().to_string()
+}
+
+/// Maps a failed Docker command to a recoverable Dinopod error.
+#[must_use]
+pub fn docker_command_failed(args: Vec<String>, output: &CommandOutput) -> DinopodError {
+    DinopodError::DockerCommandFailed {
+        args,
+        exit_code: output.exit_code(),
+        stderr: output.stderr().to_owned(),
+    }
+}
+
+/// Maps a failed Git command to a recoverable Dinopod error.
+#[must_use]
+pub fn git_command_failed(args: Vec<String>, output: &CommandOutput) -> DinopodError {
+    DinopodError::GitCommandFailed {
+        args,
+        exit_code: output.exit_code(),
+        stderr: output.stderr().to_owned(),
+    }
+}
 
 impl CommandRunner for StdCommandRunner {
     fn run(&self, command: &CommandSpec) -> io::Result<CommandOutput> {

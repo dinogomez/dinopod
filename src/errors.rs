@@ -98,11 +98,20 @@ pub enum DinopodError {
         /// Ticket or slug requested by the user.
         ticket: String,
     },
-    /// Another Dinopod process holds the lifecycle lock.
-    #[error("another dinopod command is already running; lock file: {}", path.display())]
+    /// Another Dinopod process holds the lifecycle guard.
+    #[error("another dinopod command is already running; guard file: {}", path.display())]
     LockUnavailable {
-        /// Lock file path.
+        /// Guard file path.
         path: PathBuf,
+    },
+    /// Local state could not be persisted after containers started.
+    #[error("environment {project} is running but state could not be saved; run `dinopod list --reconcile`")]
+    StatePersistFailed {
+        /// Compose project name.
+        project: String,
+        /// Underlying persistence error.
+        #[source]
+        source: Box<DinopodError>,
     },
     /// A local I/O operation failed.
     #[error("I/O error: {0}")]

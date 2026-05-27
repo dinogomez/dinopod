@@ -29,6 +29,9 @@ pub enum NameError {
     /// Repository name normalization produced no usable characters.
     #[error("repository slug is empty after normalization")]
     EmptyRepoSlug,
+    /// Ticket input contains characters unsafe for Traefik host rules.
+    #[error("ticket contains characters that are unsafe for local hostnames")]
+    InvalidTicketCharacters,
 }
 
 /// Normalizes arbitrary input into a lowercase slug safe for local hostnames.
@@ -37,6 +40,7 @@ pub enum NameError {
 ///
 /// Returns [`NameError::EmptyTicketSlug`] when no valid slug characters remain.
 pub fn normalize_slug(input: &str) -> Result<TicketSlug, NameError> {
+    validate_ticket_characters(input)?;
     normalize_to_string(input)
         .map(TicketSlug::new)
         .ok_or(NameError::EmptyTicketSlug)
@@ -96,6 +100,17 @@ fn normalize_to_string(input: &str) -> Option<String> {
     }
 
     (!output.is_empty()).then_some(output)
+}
+
+fn validate_ticket_characters(input: &str) -> Result<(), NameError> {
+    if input.contains("||")
+        || input
+            .chars()
+            .any(|character| matches!(character, '`' | '(' | ')' | '"' | '\''))
+    {
+        return Err(NameError::InvalidTicketCharacters);
+    }
+    Ok(())
 }
 
 fn normalize_path(path: &Path) -> PathBuf {

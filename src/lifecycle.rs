@@ -66,21 +66,21 @@ pub trait LifecyclePorts {
     /// # Errors
     ///
     /// Returns a recoverable Dinopod error when Compose stop fails.
-    fn compose_stop(&self, project: &str) -> Result<()>;
+    fn compose_stop(&self, project: &str, compose_files: &[PathBuf]) -> Result<()>;
 
     /// Removes the app Compose project.
     ///
     /// # Errors
     ///
     /// Returns a recoverable Dinopod error when Compose down fails.
-    fn compose_down(&self, project: &str, volumes: bool) -> Result<()>;
+    fn compose_down(&self, project: &str, compose_files: &[PathBuf], volumes: bool) -> Result<()>;
 
     /// Removes a Git worktree.
     ///
     /// # Errors
     ///
     /// Returns a recoverable Dinopod error when worktree removal fails.
-    fn remove_worktree(&self, path: &Path) -> Result<()>;
+    fn remove_worktree(&self, repo_root: &Path, path: &Path) -> Result<()>;
 
     /// Returns whether the Compose project is currently running.
     ///
@@ -157,20 +157,26 @@ where
             &render_override(&self.config, &spec.names),
         )?;
         self.ports.ensure_proxy()?;
-        let inspection = self.ports.compose_up(
-            &spec.record.project,
-            &[
-                spec.record
-                    .worktree_path
-                    .join(&self.config.app.compose_file),
-                spec.compose_override_path,
-            ],
-        )?;
         self.ports.write_route(
             &spec.record.route_path,
             &render_route(&self.config, &spec.names),
         )?;
-        self.upsert_record(spec.record.clone())?;
+
+        let compose_files = spec.record.compose_files();
+        let inspection = match self.ports.compose_up(&spec.record.project, &compose_files) {
+            Ok(inspection) => inspection,
+            Err(error) => {
+                let _ = self.ports.remove_route(&spec.record.route_path);
+                return Err(error);
+            }
+        };
+
+        if let Err(error) = self.upsert_record(spec.record.clone()) {
+            return Err(DinopodError::StatePersistFailed {
+                project: spec.record.project.clone(),
+                source: Box::new(error),
+            });
+        }
 
         Ok(DevSummary {
             worktree_path: spec.record.worktree_path,
@@ -180,12 +186,21 @@ where
         })
     }
 
-    /// Lists tracked environments and reconciles running status with Docker.
+    /// Lists tracked environments without mutating state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a recoverable Dinopod error when state cannot be read.
+    pub fn list(&self) -> Result<Vec<EnvironmentRecord>> {
+        Ok(self.state.load()?.into_values().collect())
+    }
+
+    /// Reconciles tracked environments with Docker and persists updated status.
     ///
     /// # Errors
     ///
     /// Returns a recoverable Dinopod error when state or Docker inspection fails.
-    pub fn list(&self) -> Result<Vec<EnvironmentRecord>> {
+    pub fn list_reconciled(&self) -> Result<Vec<EnvironmentRecord>> {
         let mut records = self.state.load()?;
         for record in records.values_mut() {
             if record.status == EnvironmentStatus::Running
@@ -206,7 +221,8 @@ where
     /// Returns a recoverable Dinopod error when the environment is unknown or Compose fails.
     pub fn stop(&self, ticket: &str) -> Result<()> {
         self.update_record(ticket, |record| {
-            self.ports.compose_stop(&record.project)?;
+            self.ports
+                .compose_stop(&record.project, &record.compose_files())?;
             record.status = EnvironmentStatus::Stopped;
             Ok(())
         })
@@ -220,7 +236,8 @@ where
     /// or the route cannot be removed.
     pub fn down(&self, ticket: &str, volumes: bool) -> Result<()> {
         self.update_record(ticket, |record| {
-            self.ports.compose_down(&record.project, volumes)?;
+            self.ports
+                .compose_down(&record.project, &record.compose_files(), volumes)?;
             self.ports.remove_route(&record.route_path)?;
             record.status = EnvironmentStatus::Down;
             Ok(())
@@ -247,9 +264,11 @@ where
             });
         };
 
-        self.ports.compose_down(&record.project, false)?;
+        self.ports
+            .compose_down(&record.project, &record.compose_files(), false)?;
         self.ports.remove_route(&record.route_path)?;
-        self.ports.remove_worktree(&record.worktree_path)?;
+        self.ports
+            .remove_worktree(&self.repo_root, &record.worktree_path)?;
         self.save_records(records)
     }
 
@@ -265,6 +284,7 @@ where
             .join("dynamic")
             .join(format!("{project}.toml"));
         let compose_override_path = worktree_path.join(".dinopod").join("compose.override.yml");
+        let user_compose_path = worktree_path.join(&self.config.app.compose_file);
 
         Ok(EnvironmentSpec {
             record: EnvironmentRecord {
@@ -274,6 +294,8 @@ where
                 url,
                 worktree_path,
                 route_path,
+                user_compose_path: Some(user_compose_path),
+                compose_override_path: Some(compose_override_path.clone()),
                 status: EnvironmentStatus::Running,
             },
             compose_override_path,

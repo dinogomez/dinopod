@@ -22,8 +22,12 @@ pub enum Command {
         /// Ticket or branch identifier.
         ticket: String,
     },
-    /// List active Dinopod environments.
-    List,
+    /// List tracked Dinopod environments.
+    List {
+        /// Reconcile cached status with Docker and persist updates.
+        #[arg(long)]
+        reconcile: bool,
+    },
     /// Stop an environment while keeping containers and volumes.
     Stop {
         /// Ticket or branch identifier.

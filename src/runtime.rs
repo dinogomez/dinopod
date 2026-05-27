@@ -2,13 +2,16 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::cmd::{CommandOutput, CommandRunner, CommandSpec, StdCommandRunner};
+use crate::cmd::{
+    docker_command_failed, git_command_failed, path_display, CommandRunner, CommandSpec,
+    StdCommandRunner,
+};
 use crate::compose::{
     build_compose_command, inspect_compose_config, ComposeInspection, ComposeValidator,
     StdComposeFs,
 };
 use crate::config::DinopodConfig;
-use crate::errors::{DinopodError, Result};
+use crate::errors::Result;
 use crate::fs::{AtomicFileSystem, AtomicWriter, StdAtomicFileSystem};
 use crate::git::{GitWorktreeManager, StdWorktreeFs, WorktreeRequest};
 use crate::lifecycle::LifecyclePorts;
@@ -33,22 +36,6 @@ where
             runner,
             config,
             proxy_paths,
-        }
-    }
-
-    fn run_docker<I, S>(&self, args: I) -> Result<()>
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
-        let output = self
-            .runner
-            .run(&CommandSpec::new("docker").args(args.clone()))?;
-        if output.success() {
-            Ok(())
-        } else {
-            Err(docker_command_failed(args, &output))
         }
     }
 
@@ -140,15 +127,8 @@ where
         }
         let inspection = inspect_compose_config(inspect_output.stdout(), &self.config.app.service)?;
         let files = crate::compose::ComposeFiles::new(user_file, override_file);
-        let command = build_compose_command(
-            project,
-            &files,
-            [
-                "up".to_owned(),
-                "-d".to_owned(),
-                self.config.app.service.clone(),
-            ],
-        );
+        let command =
+            build_compose_command(project, &files, compose_up_args(&self.config.app.service));
         let output = self.runner.run(&command)?;
         if output.success() {
             Ok(inspection)
@@ -157,25 +137,25 @@ where
         }
     }
 
-    fn compose_stop(&self, project: &str) -> Result<()> {
-        self.run_docker(["compose", "-p", project, "stop"])
+    fn compose_stop(&self, project: &str, compose_files: &[PathBuf]) -> Result<()> {
+        self.run_compose(project, compose_files, ["stop"])
     }
 
-    fn compose_down(&self, project: &str, volumes: bool) -> Result<()> {
+    fn compose_down(&self, project: &str, compose_files: &[PathBuf], volumes: bool) -> Result<()> {
         if volumes {
-            self.run_docker(["compose", "-p", project, "down", "--volumes"])
+            self.run_compose(project, compose_files, ["down", "--volumes"])
         } else {
-            self.run_docker(["compose", "-p", project, "down"])
+            self.run_compose(project, compose_files, ["down"])
         }
     }
 
-    fn remove_worktree(&self, path: &Path) -> Result<()> {
+    fn remove_worktree(&self, repo_root: &Path, path: &Path) -> Result<()> {
         self.run_git(
-            Path::new("."),
+            repo_root,
             vec![
                 "worktree".to_owned(),
                 "remove".to_owned(),
-                path.display().to_string(),
+                path_display(path),
             ],
         )
     }
@@ -199,6 +179,27 @@ impl<R> CommandLifecyclePorts<R>
 where
     R: CommandRunner,
 {
+    fn run_compose<I, S>(&self, project: &str, compose_files: &[PathBuf], args: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let Some((user_file, rest)) = compose_files.split_first() else {
+            return Ok(());
+        };
+        let Some(override_file) = rest.first() else {
+            return Ok(());
+        };
+        let files = crate::compose::ComposeFiles::new(user_file, override_file);
+        let command = build_compose_command(project, &files, args);
+        let output = self.runner.run(&command)?;
+        if output.success() {
+            Ok(())
+        } else {
+            Err(docker_command_failed(command.arguments().to_vec(), &output))
+        }
+    }
+
     fn inspect_proxy_status(&self) -> Result<ProxyStatus> {
         let args = vec![
             "inspect".to_owned(),
@@ -224,18 +225,6 @@ where
     }
 }
 
-fn docker_command_failed(args: Vec<String>, output: &CommandOutput) -> DinopodError {
-    DinopodError::DockerCommandFailed {
-        args,
-        exit_code: output.exit_code(),
-        stderr: output.stderr().to_owned(),
-    }
-}
-
-fn git_command_failed(args: Vec<String>, output: &CommandOutput) -> DinopodError {
-    DinopodError::GitCommandFailed {
-        args,
-        exit_code: output.exit_code(),
-        stderr: output.stderr().to_owned(),
-    }
+fn compose_up_args(service: &str) -> Vec<String> {
+    vec!["up".to_owned(), "-d".to_owned(), service.to_owned()]
 }

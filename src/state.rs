@@ -39,8 +39,30 @@ pub struct EnvironmentRecord {
     pub worktree_path: PathBuf,
     /// Generated route file path.
     pub route_path: PathBuf,
+    /// User Compose file path inside the worktree.
+    #[serde(default)]
+    pub user_compose_path: Option<PathBuf>,
+    /// Dinopod Compose override path inside the worktree.
+    #[serde(default)]
+    pub compose_override_path: Option<PathBuf>,
     /// Cached lifecycle status.
     pub status: EnvironmentStatus,
+}
+
+impl EnvironmentRecord {
+    /// Returns the Compose file pair used for Docker commands.
+    #[must_use]
+    pub fn compose_files(&self) -> Vec<PathBuf> {
+        let user = self
+            .user_compose_path
+            .clone()
+            .unwrap_or_else(|| self.worktree_path.join("docker-compose.yml"));
+        let override_file = self
+            .compose_override_path
+            .clone()
+            .unwrap_or_else(|| self.worktree_path.join(".dinopod/compose.override.yml"));
+        vec![user, override_file]
+    }
 }
 
 /// Local state persistence boundary.

@@ -50,31 +50,6 @@ pub struct ProxyConfig {
     pub image: String,
 }
 
-/// CLI overrides that take precedence over file configuration.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct ConfigOverrides {
-    /// Override the app service.
-    pub app_service: Option<String>,
-    /// Override the app internal port.
-    pub internal_port: Option<u16>,
-    /// Override the Compose file path.
-    pub compose_file: Option<PathBuf>,
-    /// Override the default branch.
-    pub default_branch: Option<String>,
-    /// Override the worktree root.
-    pub worktree_root: Option<PathBuf>,
-    /// Override the host suffix.
-    pub host_suffix: Option<String>,
-    /// Override the proxy network.
-    pub proxy_network: Option<String>,
-    /// Override the proxy container name.
-    pub proxy_container_name: Option<String>,
-    /// Override the proxy HTTP port.
-    pub proxy_http_port: Option<u16>,
-    /// Override the Traefik image reference.
-    pub proxy_image: Option<String>,
-}
-
 #[derive(Debug, Deserialize)]
 struct PartialConfig {
     app: Option<PartialAppConfig>,
@@ -144,42 +119,6 @@ impl DinopodConfig {
     pub fn from_toml_str(input: &str) -> Result<Self, ConfigError> {
         let partial = toml::from_str::<PartialConfig>(input)?;
         Ok(Self::default().merge_partial(partial))
-    }
-
-    /// Applies CLI overrides to an already resolved config.
-    #[must_use]
-    pub fn with_overrides(mut self, overrides: ConfigOverrides) -> Self {
-        if let Some(value) = overrides.app_service {
-            self.app.service = value;
-        }
-        if let Some(value) = overrides.internal_port {
-            self.app.internal_port = value;
-        }
-        if let Some(value) = overrides.compose_file {
-            self.app.compose_file = value;
-        }
-        if let Some(value) = overrides.default_branch {
-            self.app.default_branch = value;
-        }
-        if let Some(value) = overrides.worktree_root {
-            self.worktree.root = value;
-        }
-        if let Some(value) = overrides.host_suffix {
-            self.proxy.host_suffix = value;
-        }
-        if let Some(value) = overrides.proxy_network {
-            self.proxy.network = value;
-        }
-        if let Some(value) = overrides.proxy_container_name {
-            self.proxy.container_name = value;
-        }
-        if let Some(value) = overrides.proxy_http_port {
-            self.proxy.http_port = value;
-        }
-        if let Some(value) = overrides.proxy_image {
-            self.proxy.image = value;
-        }
-        self
     }
 
     fn merge_partial(mut self, partial: PartialConfig) -> Self {

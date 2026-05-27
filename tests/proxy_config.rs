@@ -7,7 +7,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use dinopod::cmd::{CommandOutput, CommandRunner, CommandSpec};
 use dinopod::config::DinopodConfig;
 use dinopod::fs::{AtomicFileSystem, AtomicWriter};
-use dinopod::lock::FileLock;
+use dinopod::lock::MutationGuard;
 use dinopod::names::derive_names;
 use dinopod::proxy::{render_proxy_compose, ProxyAction, ProxyManager, ProxyPaths, ProxyStatus};
 use dinopod::routes::render_route;
@@ -158,14 +158,14 @@ fn file_lock_should_prevent_concurrent_proxy_mutations() {
         std::process::id(),
         "proxy"
     ));
-    let first = FileLock::try_acquire(&lock_path)
+    let first = MutationGuard::try_acquire(&lock_path)
         .expect("lock acquisition should not error")
         .expect("first lock should be acquired");
-    let second = FileLock::try_acquire(&lock_path).expect("second lock should not error");
+    let second = MutationGuard::try_acquire(&lock_path).expect("second lock should not error");
 
     assert!(second.is_none());
     drop(first);
-    assert!(FileLock::try_acquire(&lock_path)
+    assert!(MutationGuard::try_acquire(&lock_path)
         .expect("third lock should not error")
         .is_some());
 }
@@ -180,7 +180,7 @@ fn stale_file_lock_should_be_recovered_after_stale_age() {
     std::fs::write(&lock_path, "pid=999999\ncreated_at_unix_seconds=0\n")
         .expect("stale lock fixture should be writable");
 
-    let lock = FileLock::try_acquire_with_stale_after(
+    let lock = MutationGuard::try_acquire_with_stale_after(
         &lock_path,
         UNIX_EPOCH + Duration::from_mins(2),
         Duration::from_mins(1),

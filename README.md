@@ -37,6 +37,7 @@ Lifecycle commands:
 
 ```sh
 dinopod list
+dinopod list --reconcile
 dinopod stop JIRA-123
 dinopod down JIRA-123
 dinopod down JIRA-123 --volumes
@@ -54,6 +55,8 @@ Your app service should listen on its normal internal port. Fixed host ports can
 The MVP uses Traefik with the file provider. Traefik does not mount `/var/run/docker.sock` and does not use the Docker provider. Dinopod writes explicit route files that map each ticket hostname to the app container's proxy-network alias.
 
 The default proxy image is `traefik:v3.6`; digest-pinned image references are supported through config.
+
+Concurrent lifecycle commands use a best-effort guard file under the Dinopod config directory. It prevents most accidental overlap but is not a kernel advisory lock.
 
 ## Verification
 

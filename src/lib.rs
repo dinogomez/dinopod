@@ -2,6 +2,7 @@
 
 //! Core library for the `dinopod` command-line tool.
 
+pub mod app;
 pub mod cli;
 pub mod cmd;
 pub mod compose;

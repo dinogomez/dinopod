@@ -3,9 +3,9 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::cmd::{CommandOutput, CommandRunner, CommandSpec};
+use crate::cmd::{docker_command_failed, path_display, CommandOutput, CommandRunner, CommandSpec};
 use crate::config::DinopodConfig;
-use crate::errors::{DinopodError, Result};
+use crate::errors::Result;
 
 /// Filesystem paths for Dinopod-managed proxy assets.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -122,7 +122,7 @@ where
             "-p".to_owned(),
             config.proxy.network.clone(),
             "-f".to_owned(),
-            path_arg(paths.compose_file()),
+            path_display(paths.compose_file()),
             "up".to_owned(),
             "-d".to_owned(),
         ])
@@ -196,16 +196,4 @@ pub fn render_proxy_compose(config: &DinopodConfig, paths: &ProxyPaths) -> Strin
         dynamic_dir = paths.dynamic_config_dir().display(),
         network = config.proxy.network,
     )
-}
-
-fn docker_command_failed(args: Vec<String>, output: &CommandOutput) -> DinopodError {
-    DinopodError::DockerCommandFailed {
-        args,
-        exit_code: output.exit_code(),
-        stderr: output.stderr().to_owned(),
-    }
-}
-
-fn path_arg(path: &Path) -> String {
-    path.display().to_string()
 }

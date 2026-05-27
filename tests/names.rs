@@ -39,6 +39,16 @@ fn derive_names_should_create_deterministic_environment_identifiers() {
 }
 
 #[test]
+fn normalize_slug_should_reject_traefik_unsafe_characters() {
+    let error = normalize_slug("foo`bar").expect_err("backticks should fail");
+
+    assert_eq!(
+        error.to_string(),
+        "ticket contains characters that are unsafe for local hostnames"
+    );
+}
+
+#[test]
 fn domain_identifier_types_should_not_collapse_to_one_raw_string_type() {
     assert_ne!(TypeId::of::<HostName>(), TypeId::of::<ProjectName>());
     assert_ne!(TypeId::of::<ProjectName>(), TypeId::of::<NetworkAlias>());

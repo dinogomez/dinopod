@@ -10,9 +10,8 @@ macro_rules! string_id {
         pub struct $name(String);
 
         impl $name {
-            /// Creates a new identifier from an already validated value.
-            #[must_use]
-            pub fn new(value: impl Into<String>) -> Self {
+            /// Creates an identifier from a validated value.
+            pub(crate) fn new(value: impl Into<String>) -> Self {
                 Self(value.into())
             }
 
@@ -50,9 +49,8 @@ string_id!(
 pub struct WorktreePath(PathBuf);
 
 impl WorktreePath {
-    /// Creates a new worktree path.
-    #[must_use]
-    pub fn new(path: PathBuf) -> Self {
+    /// Creates a worktree path from a validated location.
+    pub(crate) fn new(path: PathBuf) -> Self {
         Self(path)
     }
 

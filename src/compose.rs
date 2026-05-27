@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::cmd::CommandSpec;
+use crate::cmd::{path_display, CommandSpec};
 use crate::config::DinopodConfig;
 use crate::errors::{DinopodError, Result};
 use crate::names::EnvironmentNames;
@@ -183,9 +183,9 @@ where
         "-p".to_owned(),
         project_name.to_owned(),
         "-f".to_owned(),
-        path_arg(files.user_file()),
+        path_display(files.user_file()),
         "-f".to_owned(),
-        path_arg(files.override_file()),
+        path_display(files.override_file()),
     ];
     compose_args.extend(args.into_iter().map(Into::into));
     CommandSpec::new("docker").args(compose_args)
@@ -213,8 +213,4 @@ fn published_port(value: &Value) -> Option<String> {
         .as_str()
         .map(ToOwned::to_owned)
         .or_else(|| value.as_u64().map(|port| port.to_string()))
-}
-
-fn path_arg(path: &Path) -> String {
-    path.display().to_string()
 }

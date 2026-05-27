@@ -3,7 +3,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::cmd::{CommandOutput, CommandRunner, CommandSpec};
+use crate::cmd::{git_command_failed, path_display, CommandOutput, CommandRunner, CommandSpec};
 use crate::errors::{DinopodError, Result};
 
 /// Filesystem checks used by Git worktree orchestration.
@@ -163,7 +163,7 @@ where
         let args = [
             "worktree".to_owned(),
             "add".to_owned(),
-            path_arg(request.worktree_path()),
+            path_display(request.worktree_path()),
             request.branch().to_owned(),
         ];
         self.run_git(request.repo_root(), args)?;
@@ -176,7 +176,7 @@ where
             "add".to_owned(),
             "-b".to_owned(),
             request.branch().to_owned(),
-            path_arg(request.worktree_path()),
+            path_display(request.worktree_path()),
             request.default_branch().to_owned(),
         ];
         self.run_git(request.repo_root(), args)?;
@@ -263,16 +263,4 @@ fn parse_worktree_list(input: &str) -> Vec<WorktreeEntry> {
     }
 
     entries
-}
-
-fn git_command_failed(args: Vec<String>, output: &CommandOutput) -> DinopodError {
-    DinopodError::GitCommandFailed {
-        args,
-        exit_code: output.exit_code(),
-        stderr: output.stderr().to_owned(),
-    }
-}
-
-fn path_arg(path: &Path) -> String {
-    path.display().to_string()
 }

@@ -13,6 +13,7 @@ struct FakePorts {
     compose_files: RefCell<Vec<Vec<PathBuf>>>,
     running_projects: RefCell<Vec<String>>,
     fail_compose_up: bool,
+    fail_route_write: bool,
 }
 
 impl FakePorts {
@@ -50,6 +51,11 @@ impl LifecyclePorts for FakePorts {
     }
 
     fn write_route(&self, path: &Path, _contents: &str) -> Result<(), DinopodError> {
+        if self.fail_route_write {
+            return Err(DinopodError::Io(std::io::Error::other(
+                "route write failed",
+            )));
+        }
         self.calls
             .borrow_mut()
             .push(format!("write-route:{}", path.display()));
@@ -88,30 +94,38 @@ impl LifecyclePorts for FakePorts {
         Ok(ComposeInspection::default())
     }
 
-    fn compose_stop(&self, project: &str) -> Result<(), DinopodError> {
+    fn compose_stop(&self, project: &str, compose_files: &[PathBuf]) -> Result<(), DinopodError> {
         self.calls
             .borrow_mut()
-            .push(format!("compose-stop:{project}"));
+            .push(format!("compose-stop:{project}:{}", compose_files.len()));
         self.running_projects
             .borrow_mut()
             .retain(|candidate| candidate != project);
         Ok(())
     }
 
-    fn compose_down(&self, project: &str, volumes: bool) -> Result<(), DinopodError> {
-        self.calls
-            .borrow_mut()
-            .push(format!("compose-down:{project}:{volumes}"));
+    fn compose_down(
+        &self,
+        project: &str,
+        compose_files: &[PathBuf],
+        volumes: bool,
+    ) -> Result<(), DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "compose-down:{project}:{volumes}:{}",
+            compose_files.len()
+        ));
         self.running_projects
             .borrow_mut()
             .retain(|candidate| candidate != project);
         Ok(())
     }
 
-    fn remove_worktree(&self, path: &Path) -> Result<(), DinopodError> {
-        self.calls
-            .borrow_mut()
-            .push(format!("remove-worktree:{}", path.display()));
+    fn remove_worktree(&self, repo_root: &Path, path: &Path) -> Result<(), DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "remove-worktree:{}:{}",
+            repo_root.display(),
+            path.display()
+        ));
         Ok(())
     }
 
@@ -121,6 +135,20 @@ impl LifecyclePorts for FakePorts {
             .borrow()
             .iter()
             .any(|candidate| candidate == project))
+    }
+}
+
+struct FailingStateStore {
+    inner: InMemoryStateStore,
+}
+
+impl StateStore for FailingStateStore {
+    fn load(&self) -> Result<std::collections::BTreeMap<String, EnvironmentRecord>, DinopodError> {
+        self.inner.load()
+    }
+
+    fn save(&self, _records: Vec<EnvironmentRecord>) -> Result<(), DinopodError> {
+        Err(DinopodError::Io(std::io::Error::other("state save failed")))
     }
 }
 
@@ -169,8 +197,8 @@ fn dev_should_orchestrate_environment_creation_and_write_state() {
             "worktree:/repo/.dinopod-worktrees/myapp-jira-123:jira-123:main",
             "write-compose:/repo/.dinopod-worktrees/myapp-jira-123/.dinopod/compose.override.yml",
             "ensure-proxy",
-            "compose-up:myapp-jira-123",
             "write-route:/config/dinopod/proxy/dynamic/myapp-jira-123.toml",
+            "compose-up:myapp-jira-123",
         ]
     );
     assert_eq!(
@@ -212,7 +240,7 @@ fn dev_should_include_configured_proxy_port_in_url_when_not_default_http() {
 }
 
 #[test]
-fn dev_should_not_leave_route_or_state_when_compose_up_fails() {
+fn dev_should_remove_route_when_compose_up_fails() {
     let ports = FakePorts {
         fail_compose_up: true,
         ..FakePorts::default()
@@ -225,15 +253,59 @@ fn dev_should_not_leave_route_or_state_when_compose_up_fails() {
         .expect_err("compose failure should fail dev");
 
     assert!(matches!(error, DinopodError::DockerCommandFailed { .. }));
-    assert!(!ports
+    assert!(ports
         .calls()
-        .iter()
-        .any(|call| call.starts_with("write-route:")));
+        .contains(&"remove-route:/config/dinopod/proxy/dynamic/myapp-jira-123.toml".to_owned()));
     assert!(state.load().expect("state should load").is_empty());
 }
 
 #[test]
-fn list_should_reconcile_missing_docker_project_as_stale() {
+fn dev_should_not_start_compose_when_route_write_fails() {
+    let ports = FakePorts {
+        fail_route_write: true,
+        ..FakePorts::default()
+    };
+    let state = InMemoryStateStore::default();
+    let manager = manager(&ports, &state);
+
+    let error = manager
+        .dev("JIRA-123")
+        .expect_err("route failure should fail dev");
+
+    assert!(matches!(error, DinopodError::Io(_)));
+    assert!(!ports
+        .calls()
+        .iter()
+        .any(|call| call.starts_with("compose-up:")));
+    assert!(state.load().expect("state should load").is_empty());
+}
+
+#[test]
+fn dev_should_report_state_persist_failure_after_compose_up() {
+    let ports = FakePorts::default();
+    let state = FailingStateStore {
+        inner: InMemoryStateStore::default(),
+    };
+    let manager = LifecycleManager::new(
+        DinopodConfig::default(),
+        "MyApp",
+        Path::new("/repo/myapp"),
+        Path::new("/config/dinopod"),
+        &ports,
+        &state,
+    );
+
+    let error = manager.dev("JIRA-123").expect_err("state save should fail");
+
+    assert!(matches!(error, DinopodError::StatePersistFailed { .. }));
+    assert!(ports
+        .calls()
+        .iter()
+        .any(|call| call.starts_with("compose-up:")));
+}
+
+#[test]
+fn list_should_not_mutate_state_without_reconcile() {
     let ports = FakePorts::default();
     let state = InMemoryStateStore::default();
     state
@@ -244,12 +316,41 @@ fn list_should_reconcile_missing_docker_project_as_stale() {
             url: "http://jira-123.localhost".to_owned(),
             worktree_path: PathBuf::from("/repo/.dinopod-worktrees/myapp-jira-123"),
             route_path: PathBuf::from("/config/dinopod/proxy/dynamic/myapp-jira-123.toml"),
+            user_compose_path: None,
+            compose_override_path: None,
             status: EnvironmentStatus::Running,
         }])
         .expect("state save should work");
     let manager = manager(&ports, &state);
 
-    let records = manager.list().expect("list should reconcile state");
+    let records = manager.list().expect("list should succeed");
+
+    assert_eq!(records[0].status, EnvironmentStatus::Running);
+    assert!(ports.calls().is_empty());
+}
+
+#[test]
+fn list_reconcile_should_mark_missing_docker_project_as_stale() {
+    let ports = FakePorts::default();
+    let state = InMemoryStateStore::default();
+    state
+        .save(vec![EnvironmentRecord {
+            project: "myapp-jira-123".to_owned(),
+            ticket: "JIRA-123".to_owned(),
+            host: "jira-123.localhost".to_owned(),
+            url: "http://jira-123.localhost".to_owned(),
+            worktree_path: PathBuf::from("/repo/.dinopod-worktrees/myapp-jira-123"),
+            route_path: PathBuf::from("/config/dinopod/proxy/dynamic/myapp-jira-123.toml"),
+            user_compose_path: None,
+            compose_override_path: None,
+            status: EnvironmentStatus::Running,
+        }])
+        .expect("state save should work");
+    let manager = manager(&ports, &state);
+
+    let records = manager
+        .list_reconciled()
+        .expect("reconciled list should succeed");
 
     assert_eq!(records[0].status, EnvironmentStatus::Stale);
 }
@@ -267,7 +368,7 @@ fn down_should_remove_route_and_preserve_volumes_by_default() {
 
     assert!(ports
         .calls()
-        .contains(&"compose-down:myapp-jira-123:false".to_owned()));
+        .contains(&"compose-down:myapp-jira-123:false:2".to_owned()));
     assert!(ports
         .calls()
         .contains(&"remove-route:/config/dinopod/proxy/dynamic/myapp-jira-123.toml".to_owned()));
@@ -307,9 +408,9 @@ fn forced_rm_should_remove_route_project_worktree_and_state() {
 
     assert!(ports
         .calls()
-        .contains(&"compose-down:myapp-jira-123:false".to_owned()));
-    assert!(ports
-        .calls()
-        .contains(&"remove-worktree:/repo/.dinopod-worktrees/myapp-jira-123".to_owned()));
+        .contains(&"compose-down:myapp-jira-123:false:2".to_owned()));
+    assert!(ports.calls().contains(
+        &"remove-worktree:/repo/myapp:/repo/.dinopod-worktrees/myapp-jira-123".to_owned()
+    ));
     assert!(state.load().expect("state should load").is_empty());
 }
