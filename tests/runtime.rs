@@ -141,10 +141,7 @@ fn ensure_proxy_should_repair_running_proxy_with_stale_port_binding() {
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
     let dynamic_dir = temp_dir.join("proxy").join("dynamic");
     let runner = RecordingRunner::new(vec![
-        CommandOutput::successful(
-            proxy_inspect_output("traefik:v3.6", 8080, &dynamic_dir),
-            "",
-        ),
+        CommandOutput::successful(proxy_inspect_output("traefik:v3.6", 8080, &dynamic_dir), ""),
         CommandOutput::successful("", ""),
         CommandOutput::successful("", ""),
     ]);

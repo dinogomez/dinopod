@@ -240,7 +240,10 @@ fn dropped_guard_should_not_remove_another_process_recovered_lock() {
 
     std::fs::write(
         &lock_path,
-        format!("pid=999999\ncreated_at_unix_seconds=0\ntoken={}\n", original_token + 1),
+        format!(
+            "pid=999999\ncreated_at_unix_seconds=0\ntoken={}\n",
+            original_token + 1
+        ),
     )
     .expect("simulated recovered lock should be writable");
 
