@@ -1,0 +1,21 @@
+services:
+  app:
+    image: hashicorp/http-echo:1.0
+    command: ["-text=dinopod"]
+    depends_on:
+      - db
+    expose:
+      - "5678"
+  app_with_fixed_port:
+    image: hashicorp/http-echo:1.0
+    command: ["-text=dinopod-fixed-port"]
+    ports:
+      - "3000:5678"
+  db:
+    image: alpine:3.22
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    volumes:
+      - db-data:/data
+
+volumes:
+  db-data:
