@@ -98,6 +98,13 @@ pub enum ComposeWarning {
         /// Published host port.
         published: String,
     },
+    /// A service uses a fixed container name and can collide across projects.
+    FixedContainerName {
+        /// Service that sets the container name.
+        service: String,
+        /// Literal Docker container name.
+        container_name: String,
+    },
 }
 
 impl fmt::Display for ComposeWarning {
@@ -106,6 +113,13 @@ impl fmt::Display for ComposeWarning {
             Self::FixedHostPort { service, published } => write!(
                 formatter,
                 "fixed host port published by service `{service}`: {published}"
+            ),
+            Self::FixedContainerName {
+                service,
+                container_name,
+            } => write!(
+                formatter,
+                "fixed container name on service `{service}`: {container_name}"
             ),
         }
     }
@@ -148,6 +162,7 @@ pub fn inspect_compose_config(input: &str, app_service: &str) -> Result<ComposeI
     let mut warnings = Vec::new();
     for (service_name, service) in services {
         warnings.extend(fixed_host_port_warnings(service_name, service));
+        warnings.extend(fixed_container_name_warnings(service_name, service));
     }
 
     Ok(ComposeInspection { warnings })
@@ -162,6 +177,7 @@ pub fn render_override(config: &DinopodConfig, names: &EnvironmentNames) -> Stri
             "services:\n",
             "  {service}:\n",
             "    networks:\n",
+            "      default: {{}}\n",
             "      {network}:\n",
             "        aliases:\n",
             "          - {alias}\n",
@@ -210,6 +226,18 @@ fn fixed_host_port_warnings(app_service: &str, service: &Value) -> Vec<ComposeWa
                     published,
                 })
         })
+        .collect()
+}
+
+fn fixed_container_name_warnings(service_name: &str, service: &Value) -> Vec<ComposeWarning> {
+    service
+        .get("container_name")
+        .and_then(Value::as_str)
+        .map(|container_name| ComposeWarning::FixedContainerName {
+            service: service_name.to_owned(),
+            container_name: container_name.to_owned(),
+        })
+        .into_iter()
         .collect()
 }
 

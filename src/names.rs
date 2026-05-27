@@ -61,8 +61,9 @@ pub fn derive_names(
     let ticket_slug = normalize_slug(ticket)?;
     let project = ProjectName::new(format!("{repo_slug}-{}", ticket_slug.as_str()));
     let host = HostName::new(format!(
-        "{}.{}",
+        "{}-{}.{}",
         ticket_slug.as_str(),
+        repo_slug,
         config.proxy.host_suffix
     ));
     let network_alias = NetworkAlias::new(format!("{}-{}", project.as_str(), config.app.service));

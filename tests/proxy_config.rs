@@ -91,11 +91,11 @@ fn classify_proxy_container_should_require_matching_port_and_dynamic_mount() {
     let expected = ProxyRuntimeSpec::from_config(&config, &paths);
     let healthy = format!(
         "true\ttraefik:v3.6\t{{\"80/tcp\":[{{\"HostPort\":\"80\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
-        paths.dynamic_config_dir().display()
+        paths.resolved_dynamic_config_dir().display()
     );
     let wrong_port = format!(
         "true\ttraefik:v3.6\t{{\"8080/tcp\":[{{\"HostPort\":\"8080\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
-        paths.dynamic_config_dir().display()
+        paths.resolved_dynamic_config_dir().display()
     );
 
     assert_eq!(
@@ -139,7 +139,7 @@ fn dynamic_route_should_map_hostname_to_proxy_alias_and_internal_port() {
 
     let route = render_route(&config, &names);
 
-    assert!(route.contains("rule = \"Host(`jira-123.localhost`)\""));
+    assert!(route.contains("rule = \"Host(`jira-123-myapp.localhost`)\""));
     assert!(route.contains("url = \"http://myapp-jira-123-app:3000\""));
 }
 
@@ -229,21 +229,10 @@ fn dropped_guard_should_not_remove_another_process_recovered_lock() {
     let original = MutationGuard::try_acquire(&lock_path)
         .expect("lock acquisition should not error")
         .expect("original lock should be acquired");
-    let original_token: u64 = std::fs::read_to_string(&lock_path)
-        .expect("lock file should be readable")
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix("token=")
-                .and_then(|value| value.parse::<u64>().ok())
-        })
-        .expect("lock file should contain token");
 
     std::fs::write(
         &lock_path,
-        format!(
-            "pid=999999\ncreated_at_unix_seconds=0\ntoken={}\n",
-            original_token + 1
-        ),
+        "pid=999999\ncreated_at_unix_seconds=0\ntoken=other-process-token\n",
     )
     .expect("simulated recovered lock should be writable");
 
@@ -360,5 +349,35 @@ fn proxy_needing_repair_should_remove_container_before_restart() {
     assert_eq!(
         runner.command_arguments()[0],
         ["rm", "-f", "dinopod-traefik"].map(String::from).to_vec()
+    );
+}
+
+#[test]
+fn generated_proxy_compose_should_use_absolute_dynamic_mount_path() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "dinopod-proxy-absolute-mount-test-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+    let relative_root = Path::new("dinopod-proxy-absolute-mount");
+    let previous_dir = std::env::current_dir().expect("current dir should be readable");
+    std::env::set_current_dir(&temp_dir).expect("temp dir should become cwd");
+
+    let config = DinopodConfig::default();
+    let paths = ProxyPaths::new(relative_root);
+    let compose = render_proxy_compose(&config, &paths);
+    let resolved = paths.resolved_dynamic_config_dir();
+
+    std::env::set_current_dir(previous_dir).expect("previous cwd should be restored");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    assert!(
+        compose.contains(&format!("{}:/etc/traefik/dynamic:ro", resolved.display())),
+        "compose should bind an absolute dynamic config path, got:\n{compose}"
+    );
+    assert!(
+        resolved.is_absolute(),
+        "resolved dynamic config dir should be absolute"
     );
 }

@@ -187,7 +187,7 @@ fn dev_should_orchestrate_environment_creation_and_write_state() {
         DevSummary {
             worktree_path: PathBuf::from("/repo/.dinopod-worktrees/myapp-jira-123"),
             project: "myapp-jira-123".to_owned(),
-            url: "http://jira-123.localhost".to_owned(),
+            url: "http://jira-123-myapp.localhost".to_owned(),
             warnings: Vec::new(),
         }
     );
@@ -236,7 +236,7 @@ fn dev_should_include_configured_proxy_port_in_url_when_not_default_http() {
 
     let summary = manager.dev("JIRA-123").expect("dev should orchestrate");
 
-    assert_eq!(summary.url, "http://jira-123.localhost:18080");
+    assert_eq!(summary.url, "http://jira-123-myapp.localhost:18080");
 }
 
 #[test]
@@ -312,8 +312,8 @@ fn list_should_not_mutate_state_without_reconcile() {
         .save(vec![EnvironmentRecord {
             project: "myapp-jira-123".to_owned(),
             ticket: "JIRA-123".to_owned(),
-            host: "jira-123.localhost".to_owned(),
-            url: "http://jira-123.localhost".to_owned(),
+            host: "jira-123-myapp.localhost".to_owned(),
+            url: "http://jira-123-myapp.localhost".to_owned(),
             worktree_path: PathBuf::from("/repo/.dinopod-worktrees/myapp-jira-123"),
             route_path: PathBuf::from("/config/dinopod/proxy/dynamic/myapp-jira-123.toml"),
             user_compose_path: None,
@@ -337,8 +337,8 @@ fn list_reconcile_should_mark_missing_docker_project_as_stale() {
         .save(vec![EnvironmentRecord {
             project: "myapp-jira-123".to_owned(),
             ticket: "JIRA-123".to_owned(),
-            host: "jira-123.localhost".to_owned(),
-            url: "http://jira-123.localhost".to_owned(),
+            host: "jira-123-myapp.localhost".to_owned(),
+            url: "http://jira-123-myapp.localhost".to_owned(),
             worktree_path: PathBuf::from("/repo/.dinopod-worktrees/myapp-jira-123"),
             route_path: PathBuf::from("/config/dinopod/proxy/dynamic/myapp-jira-123.toml"),
             user_compose_path: None,
@@ -412,5 +412,22 @@ fn forced_rm_should_remove_route_project_worktree_and_state() {
     assert!(ports.calls().contains(
         &"remove-worktree:/repo/myapp:/repo/.dinopod-worktrees/myapp-jira-123".to_owned()
     ));
+    assert!(state.load().expect("state should load").is_empty());
+}
+
+#[test]
+fn rm_after_down_should_succeed_when_route_is_already_removed() {
+    let ports = FakePorts::default();
+    let state = InMemoryStateStore::default();
+    let manager = manager(&ports, &state);
+    manager.dev("JIRA-123").expect("dev should create state");
+    manager
+        .down("JIRA-123", false)
+        .expect("down should remove route");
+
+    manager
+        .rm("JIRA-123", true)
+        .expect("rm should succeed after down already removed the route");
+
     assert!(state.load().expect("state should load").is_empty());
 }

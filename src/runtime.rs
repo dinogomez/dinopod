@@ -78,6 +78,9 @@ where
     }
 
     fn write_compose_override(&self, path: &Path, contents: &str) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let mut writer = AtomicWriter::new(StdAtomicFileSystem);
         writer.write_atomic(path, contents)?;
         Ok(())

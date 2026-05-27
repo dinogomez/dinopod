@@ -30,7 +30,7 @@ fn derive_names_should_create_deterministic_environment_identifiers() {
 
     assert_eq!(names.ticket_slug.as_str(), "jira-123");
     assert_eq!(names.project.as_str(), "myapp-jira-123");
-    assert_eq!(names.host.as_str(), "jira-123.localhost");
+    assert_eq!(names.host.as_str(), "jira-123-myapp.localhost");
     assert_eq!(names.network_alias.as_str(), "myapp-jira-123-app");
     assert_eq!(
         names.worktree_path.as_path(),

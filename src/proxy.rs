@@ -27,7 +27,7 @@ impl ProxyPaths {
     /// Creates proxy paths under `root`.
     #[must_use]
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        let root = root.into();
+        let root = resolve_config_root(&root.into());
         let proxy_root = root.join("proxy");
         Self {
             root,
@@ -53,6 +53,13 @@ impl ProxyPaths {
     pub fn dynamic_config_dir(&self) -> &Path {
         &self.dynamic_config_dir
     }
+
+    /// Returns an absolute dynamic config directory for Compose bind mounts.
+    #[must_use]
+    pub fn resolved_dynamic_config_dir(&self) -> PathBuf {
+        std::fs::canonicalize(&self.dynamic_config_dir)
+            .unwrap_or_else(|_| absolutize_path(&self.dynamic_config_dir))
+    }
 }
 
 /// Expected runtime shape for the shared Traefik proxy container.
@@ -73,7 +80,7 @@ impl ProxyRuntimeSpec {
         Self {
             image: config.proxy.image.clone(),
             http_port: config.proxy.http_port,
-            dynamic_config_dir: paths.dynamic_config_dir().to_path_buf(),
+            dynamic_config_dir: paths.resolved_dynamic_config_dir(),
         }
     }
 }
@@ -256,6 +263,20 @@ where
     }
 }
 
+fn resolve_config_root(root: &Path) -> PathBuf {
+    std::fs::canonicalize(root).unwrap_or_else(|_| absolutize_path(root))
+}
+
+fn absolutize_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    }
+}
+
 /// Renders the Docker Compose file for the shared Traefik proxy.
 #[must_use]
 pub fn render_proxy_compose(config: &DinopodConfig, paths: &ProxyPaths) -> String {
@@ -284,7 +305,7 @@ pub fn render_proxy_compose(config: &DinopodConfig, paths: &ProxyPaths) -> Strin
         image = config.proxy.image,
         container = config.proxy.container_name,
         port = config.proxy.http_port,
-        dynamic_dir = paths.dynamic_config_dir().display(),
+        dynamic_dir = paths.resolved_dynamic_config_dir().display(),
         network = config.proxy.network,
     )
 }

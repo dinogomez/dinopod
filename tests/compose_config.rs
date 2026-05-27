@@ -91,6 +91,7 @@ fn generated_override_should_attach_only_app_service_to_shared_proxy_network() {
             "services:\n",
             "  app:\n",
             "    networks:\n",
+            "      default: {}\n",
             "      dinopod-proxy:\n",
             "        aliases:\n",
             "          - myapp-jira-123-app\n",
@@ -125,5 +126,22 @@ fn compose_command_should_include_user_and_dinopod_override_files() {
             "up",
             "-d",
         ]
+    );
+}
+
+#[test]
+fn compose_config_inspection_should_warn_about_fixed_container_names() {
+    let inspection = inspect_compose_config(
+        r#"{"services":{"app":{"container_name":"my-app"},"db":{}}}"#,
+        "app",
+    )
+    .expect("app service should inspect");
+
+    assert_eq!(
+        inspection.warnings(),
+        [ComposeWarning::FixedContainerName {
+            service: "app".to_owned(),
+            container_name: "my-app".to_owned(),
+        }]
     );
 }
