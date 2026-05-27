@@ -157,7 +157,7 @@ where
             return ProxyPortStatus::InUseByDinopod;
         }
 
-        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        if TcpListener::bind(("0.0.0.0", port)).is_ok() {
             ProxyPortStatus::Free
         } else {
             ProxyPortStatus::InUseByOtherProcess

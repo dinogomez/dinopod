@@ -7,7 +7,7 @@ where
     U: Ui,
 {
     ui.status("worktree: /repo/.dinopod-worktrees/myapp-jira-123")?;
-    ui.success("url: http://jira-123.localhost")
+    ui.success("url: http://jira-123-myapp.localhost")
 }
 
 #[test]
@@ -20,7 +20,7 @@ fn successful_messages_should_go_through_output_boundary() {
         ui.stdout(),
         [
             "worktree: /repo/.dinopod-worktrees/myapp-jira-123".to_owned(),
-            "url: http://jira-123.localhost".to_owned(),
+            "url: http://jira-123-myapp.localhost".to_owned(),
         ]
     );
     assert!(ui.stderr().is_empty());

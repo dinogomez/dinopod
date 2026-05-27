@@ -3,12 +3,9 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_STALE_GUARD_AFTER: Duration = Duration::from_hours(1);
-
-static GUARD_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Best-effort exclusive guard represented by a create-new guard file.
 ///
@@ -17,7 +14,7 @@ static GUARD_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug)]
 pub struct MutationGuard {
     path: PathBuf,
-    token: u64,
+    token: String,
     _file: File,
 }
 
@@ -64,7 +61,7 @@ impl MutationGuard {
 impl Drop for MutationGuard {
     fn drop(&mut self) {
         if let Ok(content) = fs::read_to_string(&self.path) {
-            if parse_token(&content) == Some(self.token) {
+            if parse_token(&content).as_deref() == Some(self.token.as_str()) {
                 let _ = fs::remove_file(&self.path);
             }
         }
@@ -72,7 +69,7 @@ impl Drop for MutationGuard {
 }
 
 fn create_guard(path: &Path, now: SystemTime) -> io::Result<MutationGuard> {
-    let token = GUARD_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let token = new_guard_token(now);
     let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
     write!(
         file,
@@ -86,6 +83,13 @@ fn create_guard(path: &Path, now: SystemTime) -> io::Result<MutationGuard> {
         token,
         _file: file,
     })
+}
+
+fn new_guard_token(now: SystemTime) -> String {
+    let nanos = now
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    format!("{}-{}", std::process::id(), nanos)
 }
 
 fn guard_is_stale(path: &Path, now: SystemTime, stale_after: Duration) -> io::Result<bool> {
@@ -106,10 +110,12 @@ fn parse_created_at(content: &str) -> Option<u64> {
     })
 }
 
-fn parse_token(content: &str) -> Option<u64> {
+fn parse_token(content: &str) -> Option<String> {
     content.lines().find_map(|line| {
         line.strip_prefix("token=")
-            .and_then(|value| value.parse::<u64>().ok())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
     })
 }
 

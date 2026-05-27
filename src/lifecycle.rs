@@ -26,6 +26,13 @@ pub trait LifecyclePorts {
         default_branch: &str,
     ) -> Result<()>;
 
+    /// Inspects the user-owned Compose file before Dinopod overrides are applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns a recoverable Dinopod error when the Compose file is missing or invalid.
+    fn inspect_user_compose(&self, user_file: &Path) -> Result<ComposeInspection>;
+
     /// Writes the generated Compose override.
     ///
     /// # Errors
@@ -152,9 +159,14 @@ where
             spec.names.ticket_slug.as_str(),
             &self.config.app.default_branch,
         )?;
+        let compose_inspection = self.ports.inspect_user_compose(&spec.user_compose_path)?;
         self.ports.write_compose_override(
             &spec.compose_override_path,
-            &render_override(&self.config, &spec.names),
+            &render_override(
+                &self.config,
+                &spec.names,
+                compose_inspection.attach_implicit_default_network(),
+            ),
         )?;
         self.ports.ensure_proxy()?;
         self.ports.write_route(
@@ -294,10 +306,11 @@ where
                 url,
                 worktree_path,
                 route_path,
-                user_compose_path: Some(user_compose_path),
+                user_compose_path: Some(user_compose_path.clone()),
                 compose_override_path: Some(compose_override_path.clone()),
                 status: EnvironmentStatus::Running,
             },
+            user_compose_path,
             compose_override_path,
             names,
         })
@@ -349,6 +362,7 @@ fn environment_url(host: &str, http_port: u16) -> String {
 #[derive(Debug)]
 struct EnvironmentSpec {
     record: EnvironmentRecord,
+    user_compose_path: PathBuf,
     compose_override_path: PathBuf,
     names: EnvironmentNames,
 }

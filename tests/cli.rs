@@ -121,7 +121,7 @@ fn dev_from_subdirectory_should_use_primary_repo_root_and_root_config() {
 
     assert!(output.status.success());
     assert!(stdout.contains("project: myrepo-jira-123"));
-    assert!(stdout.contains("url: http://jira-123.localhost:18081"));
+    assert!(stdout.contains("url: http://jira-123-myrepo.localhost:18081"));
     assert!(stderr.contains("fixed host port"));
     let log = fs::read_to_string(&fixture.fake_log).expect("fake command log should be readable");
     assert!(log.contains(&format!(

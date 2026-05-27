@@ -23,10 +23,18 @@ fn docker_smoke_should_start_two_ticket_environments_and_cleanup() -> Result<(),
 
     assert!(first_stdout.contains("project: dinopod-smoke-repo-jira-123"));
     assert!(second_stdout.contains("project: dinopod-smoke-repo-jira-456"));
-    assert!(rerun_stdout.contains("http://jira-123.localhost"));
+    assert!(rerun_stdout.contains("http://jira-123-dinopod-smoke-repo.localhost"));
 
-    wait_for_response(smoke.proxy_port, "jira-123.localhost", "dinopod")?;
-    wait_for_response(smoke.proxy_port, "jira-456.localhost", "dinopod")?;
+    wait_for_response(
+        smoke.proxy_port,
+        "jira-123-dinopod-smoke-repo.localhost",
+        "dinopod",
+    )?;
+    wait_for_response(
+        smoke.proxy_port,
+        "jira-456-dinopod-smoke-repo.localhost",
+        "dinopod",
+    )?;
 
     Ok(())
 }

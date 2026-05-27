@@ -63,7 +63,7 @@ fn ensure_proxy_should_create_dynamic_config_directory_before_starting_proxy() {
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     let proxy_paths = ProxyPaths::new(&temp_dir);
-    let dynamic_dir = proxy_paths.dynamic_config_dir().to_path_buf();
+    let dynamic_dir = proxy_paths.resolved_dynamic_config_dir();
     let runner = RecordingRunner::new(vec![
         CommandOutput::successful(proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir), ""),
         CommandOutput::successful("", ""),
@@ -103,16 +103,13 @@ fn ensure_proxy_should_reuse_running_proxy_with_expected_image() {
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
-    let dynamic_dir = temp_dir.join("proxy").join("dynamic");
+    let proxy_paths = ProxyPaths::new(&temp_dir);
+    let dynamic_dir = proxy_paths.resolved_dynamic_config_dir();
     let runner = RecordingRunner::new(vec![CommandOutput::successful(
         proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir),
         "",
     )]);
-    let ports = CommandLifecyclePorts::new(
-        &runner,
-        DinopodConfig::default(),
-        ProxyPaths::new(&temp_dir),
-    );
+    let ports = CommandLifecyclePorts::new(&runner, DinopodConfig::default(), proxy_paths);
 
     ports
         .ensure_proxy()
@@ -139,17 +136,14 @@ fn ensure_proxy_should_repair_running_proxy_with_stale_port_binding() {
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
-    let dynamic_dir = temp_dir.join("proxy").join("dynamic");
+    let proxy_paths = ProxyPaths::new(&temp_dir);
+    let dynamic_dir = proxy_paths.resolved_dynamic_config_dir();
     let runner = RecordingRunner::new(vec![
         CommandOutput::successful(proxy_inspect_output("traefik:v3.6", 8080, &dynamic_dir), ""),
         CommandOutput::successful("", ""),
         CommandOutput::successful("", ""),
     ]);
-    let ports = CommandLifecyclePorts::new(
-        &runner,
-        DinopodConfig::default(),
-        ProxyPaths::new(&temp_dir),
-    );
+    let ports = CommandLifecyclePorts::new(&runner, DinopodConfig::default(), proxy_paths);
 
     ports
         .ensure_proxy()
@@ -167,17 +161,14 @@ fn ensure_proxy_should_repair_running_proxy_with_wrong_image() {
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
-    let dynamic_dir = temp_dir.join("proxy").join("dynamic");
+    let proxy_paths = ProxyPaths::new(&temp_dir);
+    let dynamic_dir = proxy_paths.resolved_dynamic_config_dir();
     let runner = RecordingRunner::new(vec![
         CommandOutput::successful(proxy_inspect_output("traefik:v2.11", 80, &dynamic_dir), ""),
         CommandOutput::successful("", ""),
         CommandOutput::successful("", ""),
     ]);
-    let ports = CommandLifecyclePorts::new(
-        &runner,
-        DinopodConfig::default(),
-        ProxyPaths::new(&temp_dir),
-    );
+    let ports = CommandLifecyclePorts::new(&runner, DinopodConfig::default(), proxy_paths);
 
     ports
         .ensure_proxy()
@@ -272,4 +263,28 @@ fn compose_up_should_start_whole_compose_project() {
             "-d",
         ]
     );
+}
+
+#[test]
+fn write_compose_override_should_create_dinopod_directory_before_writing() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "dinopod-runtime-compose-override-test-{}",
+        process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+    let override_path = temp_dir.join(".dinopod").join("compose.override.yml");
+    let runner = RecordingRunner::default();
+    let ports = CommandLifecyclePorts::new(
+        &runner,
+        DinopodConfig::default(),
+        ProxyPaths::new(temp_dir.join("config")),
+    );
+
+    ports
+        .write_compose_override(&override_path, "services: {}\n")
+        .expect("compose override should be written");
+
+    assert!(override_path.is_file());
+    let _ = fs::remove_dir_all(&temp_dir);
 }
