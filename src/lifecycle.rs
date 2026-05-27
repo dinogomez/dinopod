@@ -26,6 +26,13 @@ pub trait LifecyclePorts {
         default_branch: &str,
     ) -> Result<()>;
 
+    /// Inspects the user-owned Compose file before Dinopod overrides are applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns a recoverable Dinopod error when the Compose file is missing or invalid.
+    fn inspect_user_compose(&self, user_file: &Path) -> Result<ComposeInspection>;
+
     /// Writes the generated Compose override.
     ///
     /// # Errors
@@ -152,9 +159,19 @@ where
             spec.names.ticket_slug.as_str(),
             &self.config.app.default_branch,
         )?;
+        let user_compose_path = spec
+            .record
+            .user_compose_path
+            .as_ref()
+            .expect("dev environments always track a user compose file");
+        let compose_inspection = self.ports.inspect_user_compose(user_compose_path)?;
         self.ports.write_compose_override(
             &spec.compose_override_path,
-            &render_override(&self.config, &spec.names),
+            &render_override(
+                &self.config,
+                &spec.names,
+                compose_inspection.attach_implicit_default_network(),
+            ),
         )?;
         self.ports.ensure_proxy()?;
         self.ports.write_route(

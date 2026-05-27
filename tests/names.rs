@@ -49,6 +49,37 @@ fn normalize_slug_should_reject_traefik_unsafe_characters() {
 }
 
 #[test]
+fn derive_names_should_keep_host_label_within_dns_limits_for_long_repo_slugs() {
+    let config = DinopodConfig::default();
+    let long_repo = "a".repeat(60);
+    let names = derive_names(&long_repo, "JIRA-123", Path::new("/repo/myapp"), &config)
+        .expect("names should derive");
+
+    let label = names
+        .host
+        .as_str()
+        .strip_suffix(".localhost")
+        .expect("host should use configured suffix");
+    assert!(label.len() <= 63);
+    assert!(label.starts_with("jira-123-"));
+}
+
+#[test]
+fn derive_names_should_keep_distinct_hosts_for_truncated_repo_slugs() {
+    let config = DinopodConfig::default();
+    let repo_a = format!("{}-alpha", "a".repeat(55));
+    let repo_b = format!("{}-beta", "a".repeat(55));
+    let host_a = derive_names(&repo_a, "JIRA-123", Path::new("/repo/a"), &config)
+        .expect("names should derive")
+        .host;
+    let host_b = derive_names(&repo_b, "JIRA-123", Path::new("/repo/b"), &config)
+        .expect("names should derive")
+        .host;
+
+    assert_ne!(host_a, host_b);
+}
+
+#[test]
 fn domain_identifier_types_should_not_collapse_to_one_raw_string_type() {
     assert_ne!(TypeId::of::<HostName>(), TypeId::of::<ProjectName>());
     assert_ne!(TypeId::of::<ProjectName>(), TypeId::of::<NetworkAlias>());

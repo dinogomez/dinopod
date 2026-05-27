@@ -43,6 +43,13 @@ impl LifecyclePorts for FakePorts {
         Ok(())
     }
 
+    fn inspect_user_compose(&self, user_file: &Path) -> Result<ComposeInspection, DinopodError> {
+        self.calls
+            .borrow_mut()
+            .push(format!("inspect-compose:{}", user_file.display()));
+        Ok(ComposeInspection::default())
+    }
+
     fn write_compose_override(&self, path: &Path, _contents: &str) -> Result<(), DinopodError> {
         self.calls
             .borrow_mut()
@@ -195,6 +202,7 @@ fn dev_should_orchestrate_environment_creation_and_write_state() {
         ports.calls(),
         [
             "worktree:/repo/.dinopod-worktrees/myapp-jira-123:jira-123:main",
+            "inspect-compose:/repo/.dinopod-worktrees/myapp-jira-123/docker-compose.yml",
             "write-compose:/repo/.dinopod-worktrees/myapp-jira-123/.dinopod/compose.override.yml",
             "ensure-proxy",
             "write-route:/config/dinopod/proxy/dynamic/myapp-jira-123.toml",

@@ -1,5 +1,7 @@
 //! Deterministic name derivation for Dinopod environments.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::{Component, Path, PathBuf};
 
 use crate::config::DinopodConfig;
@@ -61,9 +63,8 @@ pub fn derive_names(
     let ticket_slug = normalize_slug(ticket)?;
     let project = ProjectName::new(format!("{repo_slug}-{}", ticket_slug.as_str()));
     let host = HostName::new(format!(
-        "{}-{}.{}",
-        ticket_slug.as_str(),
-        repo_slug,
+        "{}.{}",
+        build_host_label(ticket_slug.as_str(), &repo_slug),
         config.proxy.host_suffix
     ));
     let network_alias = NetworkAlias::new(format!("{}-{}", project.as_str(), config.app.service));
@@ -80,6 +81,31 @@ pub fn derive_names(
         network_alias,
         worktree_path: WorktreePath::new(worktree_root.join(project.as_str())),
     })
+}
+
+const DNS_LABEL_MAX_LEN: usize = 63;
+
+fn build_host_label(ticket: &str, repo: &str) -> String {
+    let label = format!("{ticket}-{repo}");
+    if label.len() <= DNS_LABEL_MAX_LEN {
+        return label;
+    }
+
+    let hash_suffix = short_label_hash(&label);
+    let ticket_with_hash = format!("{ticket}-{hash_suffix}");
+    if ticket_with_hash.len() <= DNS_LABEL_MAX_LEN {
+        return ticket_with_hash;
+    }
+
+    let max_ticket_len = DNS_LABEL_MAX_LEN.saturating_sub(hash_suffix.len() + 1);
+    let truncated_ticket: String = ticket.chars().take(max_ticket_len).collect();
+    format!("{truncated_ticket}-{hash_suffix}")
+}
+
+fn short_label_hash(input: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    input.hash(&mut hasher);
+    format!("{:x}", hasher.finish()).chars().take(8).collect()
 }
 
 fn normalize_to_string(input: &str) -> Option<String> {

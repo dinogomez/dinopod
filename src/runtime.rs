@@ -98,6 +98,10 @@ where
         Ok(())
     }
 
+    fn inspect_user_compose(&self, user_file: &Path) -> Result<ComposeInspection> {
+        self.inspect_user_compose_file(user_file)
+    }
+
     fn ensure_proxy(&self) -> Result<()> {
         std::fs::create_dir_all(self.proxy_paths.dynamic_config_dir())?;
         let mut writer = AtomicWriter::new(StdAtomicFileSystem);
@@ -117,22 +121,7 @@ where
         let Some(override_file) = rest.first() else {
             return Ok(ComposeInspection::default());
         };
-        ComposeValidator::new(StdComposeFs).require_compose_file(user_file)?;
-        let inspect_args = vec![
-            "compose".to_owned(),
-            "-f".to_owned(),
-            user_file.display().to_string(),
-            "config".to_owned(),
-            "--format".to_owned(),
-            "json".to_owned(),
-        ];
-        let inspect_output = self
-            .runner
-            .run(&CommandSpec::new("docker").args(inspect_args.clone()))?;
-        if !inspect_output.success() {
-            return Err(docker_command_failed(inspect_args, &inspect_output));
-        }
-        let inspection = inspect_compose_config(inspect_output.stdout(), &self.config.app.service)?;
+        let inspection = self.inspect_user_compose_file(user_file)?;
         let files = crate::compose::ComposeFiles::new(user_file, override_file);
         let command = build_compose_command(project, &files, compose_up_args());
         let output = self.runner.run(&command)?;
@@ -204,6 +193,25 @@ where
         } else {
             Err(docker_command_failed(command.arguments().to_vec(), &output))
         }
+    }
+
+    fn inspect_user_compose_file(&self, user_file: &Path) -> Result<ComposeInspection> {
+        ComposeValidator::new(StdComposeFs).require_compose_file(user_file)?;
+        let inspect_args = vec![
+            "compose".to_owned(),
+            "-f".to_owned(),
+            user_file.display().to_string(),
+            "config".to_owned(),
+            "--format".to_owned(),
+            "json".to_owned(),
+        ];
+        let inspect_output = self
+            .runner
+            .run(&CommandSpec::new("docker").args(inspect_args.clone()))?;
+        if !inspect_output.success() {
+            return Err(docker_command_failed(inspect_args, &inspect_output));
+        }
+        inspect_compose_config(inspect_output.stdout(), &self.config.app.service)
     }
 
     fn inspect_proxy_status(&self) -> Result<ProxyStatus> {
