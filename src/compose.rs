@@ -175,8 +175,7 @@ pub fn inspect_compose_config(input: &str, app_service: &str) -> Result<ComposeI
             service: app_service.to_owned(),
         });
     };
-    let attach_implicit_default_network =
-        service_uses_implicit_default_network(app_service_value);
+    let attach_implicit_default_network = service_uses_implicit_default_network(app_service_value);
 
     let mut warnings = Vec::new();
     for (service_name, service) in services {
