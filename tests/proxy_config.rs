@@ -218,6 +218,42 @@ fn stale_file_lock_should_be_recovered_after_stale_age() {
 }
 
 #[test]
+fn dropped_guard_should_not_remove_another_process_recovered_lock() {
+    let lock_path = std::env::temp_dir().join(format!(
+        "dinopod-lock-test-{}-{}.lock",
+        std::process::id(),
+        "token"
+    ));
+    let _ = std::fs::remove_file(&lock_path);
+
+    let original = MutationGuard::try_acquire(&lock_path)
+        .expect("lock acquisition should not error")
+        .expect("original lock should be acquired");
+    let original_token: u64 = std::fs::read_to_string(&lock_path)
+        .expect("lock file should be readable")
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("token=")
+                .and_then(|value| value.parse::<u64>().ok())
+        })
+        .expect("lock file should contain token");
+
+    std::fs::write(
+        &lock_path,
+        format!("pid=999999\ncreated_at_unix_seconds=0\ntoken={}\n", original_token + 1),
+    )
+    .expect("simulated recovered lock should be writable");
+
+    drop(original);
+
+    assert!(
+        lock_path.is_file(),
+        "drop should not remove a lock file owned by another guard token"
+    );
+    let _ = std::fs::remove_file(&lock_path);
+}
+
+#[test]
 fn proxy_start_should_create_network_only_when_network_is_absent() {
     let runner = FakeRunner::default();
     runner.push_output(CommandOutput::successful("", ""));

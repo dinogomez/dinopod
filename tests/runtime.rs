@@ -65,7 +65,7 @@ fn ensure_proxy_should_create_dynamic_config_directory_before_starting_proxy() {
     let proxy_paths = ProxyPaths::new(&temp_dir);
     let dynamic_dir = proxy_paths.dynamic_config_dir().to_path_buf();
     let runner = RecordingRunner::new(vec![
-        CommandOutput::successful(&proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir), ""),
+        CommandOutput::successful(proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir), ""),
         CommandOutput::successful("", ""),
         CommandOutput::successful("", ""),
     ]);
@@ -105,7 +105,7 @@ fn ensure_proxy_should_reuse_running_proxy_with_expected_image() {
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
     let dynamic_dir = temp_dir.join("proxy").join("dynamic");
     let runner = RecordingRunner::new(vec![CommandOutput::successful(
-        &proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir),
+        proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir),
         "",
     )]);
     let ports = CommandLifecyclePorts::new(
@@ -142,7 +142,7 @@ fn ensure_proxy_should_repair_running_proxy_with_stale_port_binding() {
     let dynamic_dir = temp_dir.join("proxy").join("dynamic");
     let runner = RecordingRunner::new(vec![
         CommandOutput::successful(
-            &proxy_inspect_output("traefik:v3.6", 8080, &dynamic_dir),
+            proxy_inspect_output("traefik:v3.6", 8080, &dynamic_dir),
             "",
         ),
         CommandOutput::successful("", ""),
@@ -172,7 +172,7 @@ fn ensure_proxy_should_repair_running_proxy_with_wrong_image() {
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
     let dynamic_dir = temp_dir.join("proxy").join("dynamic");
     let runner = RecordingRunner::new(vec![
-        CommandOutput::successful(&proxy_inspect_output("traefik:v2.11", 80, &dynamic_dir), ""),
+        CommandOutput::successful(proxy_inspect_output("traefik:v2.11", 80, &dynamic_dir), ""),
         CommandOutput::successful("", ""),
         CommandOutput::successful("", ""),
     ]);
@@ -235,7 +235,7 @@ fn compose_up_should_inspect_app_service_before_starting_project() {
 }
 
 #[test]
-fn compose_up_should_start_configured_app_service_only() {
+fn compose_up_should_start_whole_compose_project() {
     let temp_dir = std::env::temp_dir().join(format!(
         "dinopod-runtime-compose-service-test-{}",
         process::id()
@@ -273,7 +273,6 @@ fn compose_up_should_start_configured_app_service_only() {
             &commands[1].arguments()[6],
             "up",
             "-d",
-            "app",
         ]
     );
 }

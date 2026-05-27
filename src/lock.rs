@@ -3,9 +3,12 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_STALE_GUARD_AFTER: Duration = Duration::from_hours(1);
+
+static GUARD_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Best-effort exclusive guard represented by a create-new guard file.
 ///
@@ -14,6 +17,7 @@ const DEFAULT_STALE_GUARD_AFTER: Duration = Duration::from_hours(1);
 #[derive(Debug)]
 pub struct MutationGuard {
     path: PathBuf,
+    token: u64,
     _file: File,
 }
 
@@ -59,20 +63,27 @@ impl MutationGuard {
 
 impl Drop for MutationGuard {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        if let Ok(content) = fs::read_to_string(&self.path) {
+            if parse_token(&content) == Some(self.token) {
+                let _ = fs::remove_file(&self.path);
+            }
+        }
     }
 }
 
 fn create_guard(path: &Path, now: SystemTime) -> io::Result<MutationGuard> {
+    let token = GUARD_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
     write!(
         file,
-        "pid={}\ncreated_at_unix_seconds={}\n",
+        "pid={}\ncreated_at_unix_seconds={}\ntoken={}\n",
         std::process::id(),
-        unix_seconds(now)?
+        unix_seconds(now)?,
+        token
     )?;
     Ok(MutationGuard {
         path: path.to_path_buf(),
+        token,
         _file: file,
     })
 }
@@ -91,6 +102,13 @@ fn guard_is_stale(path: &Path, now: SystemTime, stale_after: Duration) -> io::Re
 fn parse_created_at(content: &str) -> Option<u64> {
     content.lines().find_map(|line| {
         line.strip_prefix("created_at_unix_seconds=")
+            .and_then(|value| value.parse::<u64>().ok())
+    })
+}
+
+fn parse_token(content: &str) -> Option<u64> {
+    content.lines().find_map(|line| {
+        line.strip_prefix("token=")
             .and_then(|value| value.parse::<u64>().ok())
     })
 }

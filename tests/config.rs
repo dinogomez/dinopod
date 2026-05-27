@@ -37,3 +37,19 @@ fn config_file_should_override_defaults_without_requiring_every_field() {
     assert_eq!(config.proxy.host_suffix, "test.localhost");
     assert_eq!(config.proxy.network, "dinopod-proxy");
 }
+
+#[test]
+fn config_file_should_reject_unknown_keys() {
+    let error = DinopodConfig::from_toml_str(
+        r"
+        [app]
+        httpport = 18080
+        ",
+    )
+    .expect_err("unknown keys should be rejected");
+
+    assert!(
+        error.to_string().contains("unknown field"),
+        "expected unknown field error, got {error}"
+    );
+}

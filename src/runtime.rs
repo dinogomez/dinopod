@@ -131,8 +131,7 @@ where
         }
         let inspection = inspect_compose_config(inspect_output.stdout(), &self.config.app.service)?;
         let files = crate::compose::ComposeFiles::new(user_file, override_file);
-        let command =
-            build_compose_command(project, &files, compose_up_args(&self.config.app.service));
+        let command = build_compose_command(project, &files, compose_up_args());
         let output = self.runner.run(&command)?;
         if output.success() {
             Ok(inspection)
@@ -223,6 +222,6 @@ where
     }
 }
 
-fn compose_up_args(service: &str) -> Vec<String> {
-    vec!["up".to_owned(), "-d".to_owned(), service.to_owned()]
+fn compose_up_args() -> Vec<String> {
+    vec!["up".to_owned(), "-d".to_owned()]
 }

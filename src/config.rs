@@ -51,6 +51,7 @@ pub struct ProxyConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PartialConfig {
     app: Option<PartialAppConfig>,
     worktree: Option<PartialWorktreeConfig>,
@@ -58,6 +59,7 @@ struct PartialConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PartialAppConfig {
     service: Option<String>,
     internal_port: Option<u16>,
@@ -66,11 +68,13 @@ struct PartialAppConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PartialWorktreeConfig {
     root: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PartialProxyConfig {
     host_suffix: Option<String>,
     network: Option<String>,
