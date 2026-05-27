@@ -43,6 +43,23 @@ fn compose_config_inspection_should_report_missing_app_service() {
 }
 
 #[test]
+fn compose_config_inspection_should_warn_about_fixed_host_ports_on_any_service() {
+    let inspection = inspect_compose_config(
+        r#"{"services":{"app":{},"db":{"ports":[{"target":5432,"published":"5432"}]}}}"#,
+        "app",
+    )
+    .expect("app service should inspect");
+
+    assert_eq!(
+        inspection.warnings(),
+        [ComposeWarning::FixedHostPort {
+            service: "db".to_owned(),
+            published: "5432".to_owned(),
+        }]
+    );
+}
+
+#[test]
 fn compose_config_inspection_should_warn_about_fixed_host_ports() {
     let inspection = inspect_compose_config(
         r#"{"services":{"app":{"ports":[{"target":3000,"published":"3000"}]}}}"#,

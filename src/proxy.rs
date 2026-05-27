@@ -3,9 +3,17 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
+
 use crate::cmd::{docker_command_failed, path_display, CommandOutput, CommandRunner, CommandSpec};
 use crate::config::DinopodConfig;
 use crate::errors::Result;
+
+/// Docker inspect format used to compare a running proxy with Dinopod config.
+pub const PROXY_INSPECT_FORMAT: &str = concat!(
+    "{{.State.Running}}\t{{.Config.Image}}\t",
+    "{{json .HostConfig.PortBindings}}\t{{json .Mounts}}"
+);
 
 /// Filesystem paths for Dinopod-managed proxy assets.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,11 +48,94 @@ impl ProxyPaths {
         &self.compose_file
     }
 
-    /// Returns the Traefik dynamic config directory.
+    /// Returns the Dinopod dynamic config directory.
     #[must_use]
     pub fn dynamic_config_dir(&self) -> &Path {
         &self.dynamic_config_dir
     }
+}
+
+/// Expected runtime shape for the shared Traefik proxy container.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProxyRuntimeSpec {
+    /// Traefik image reference.
+    pub image: String,
+    /// Host HTTP port published by the proxy.
+    pub http_port: u16,
+    /// Host directory mounted into Traefik's dynamic config path.
+    pub dynamic_config_dir: PathBuf,
+}
+
+impl ProxyRuntimeSpec {
+    /// Builds the expected proxy runtime from config and generated paths.
+    #[must_use]
+    pub fn from_config(config: &DinopodConfig, paths: &ProxyPaths) -> Self {
+        Self {
+            image: config.proxy.image.clone(),
+            http_port: config.proxy.http_port,
+            dynamic_config_dir: paths.dynamic_config_dir().to_path_buf(),
+        }
+    }
+}
+
+/// Classifies a running proxy container against Dinopod's expected runtime.
+#[must_use]
+pub fn classify_proxy_container(inspect_stdout: &str, expected: &ProxyRuntimeSpec) -> ProxyStatus {
+    let mut fields = inspect_stdout.split('\t');
+    let Some(running) = fields.next() else {
+        return ProxyStatus::Stopped;
+    };
+    let Some(image) = fields.next() else {
+        return ProxyStatus::Stopped;
+    };
+    let port_bindings = fields.next().unwrap_or("null");
+    let mounts = fields.next().unwrap_or("null");
+
+    if running != "true" {
+        return ProxyStatus::Stopped;
+    }
+    if image != expected.image {
+        return ProxyStatus::NeedsRepair;
+    }
+    if !host_port_matches(port_bindings, expected.http_port) {
+        return ProxyStatus::NeedsRepair;
+    }
+    if !dynamic_mount_matches(mounts, &expected.dynamic_config_dir) {
+        return ProxyStatus::NeedsRepair;
+    }
+
+    ProxyStatus::Healthy
+}
+
+fn host_port_matches(bindings_json: &str, port: u16) -> bool {
+    let Ok(bindings) = serde_json::from_str::<Value>(bindings_json) else {
+        return false;
+    };
+    let key = format!("{port}/tcp");
+    bindings
+        .get(&key)
+        .and_then(Value::as_array)
+        .and_then(|bindings| bindings.first())
+        .and_then(|binding| binding.get("HostPort"))
+        .and_then(Value::as_str)
+        .is_some_and(|host_port| host_port == port.to_string())
+}
+
+fn dynamic_mount_matches(mounts_json: &str, expected_dir: &Path) -> bool {
+    let Ok(mounts) = serde_json::from_str::<Value>(mounts_json) else {
+        return false;
+    };
+    let Some(mounts) = mounts.as_array() else {
+        return false;
+    };
+
+    mounts.iter().any(|mount| {
+        mount.get("Destination").and_then(Value::as_str) == Some("/etc/traefik/dynamic")
+            && mount
+                .get("Source")
+                .and_then(Value::as_str)
+                .is_some_and(|source| source == expected_dir.to_string_lossy())
+    })
 }
 
 /// Observed state of the shared proxy container.

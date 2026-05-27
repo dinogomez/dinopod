@@ -133,19 +133,24 @@ impl ComposeInspection {
 /// [`DinopodError::ComposeServiceMissing`] when `app_service` is absent.
 pub fn inspect_compose_config(input: &str, app_service: &str) -> Result<ComposeInspection> {
     let value = serde_json::from_str::<Value>(input)?;
-    let Some(service) = value
-        .get("services")
-        .and_then(Value::as_object)
-        .and_then(|services| services.get(app_service))
-    else {
+    let Some(services) = value.get("services").and_then(Value::as_object) else {
         return Err(DinopodError::ComposeServiceMissing {
             service: app_service.to_owned(),
         });
     };
 
-    Ok(ComposeInspection {
-        warnings: fixed_host_port_warnings(app_service, service),
-    })
+    if !services.contains_key(app_service) {
+        return Err(DinopodError::ComposeServiceMissing {
+            service: app_service.to_owned(),
+        });
+    }
+
+    let mut warnings = Vec::new();
+    for (service_name, service) in services {
+        warnings.extend(fixed_host_port_warnings(service_name, service));
+    }
+
+    Ok(ComposeInspection { warnings })
 }
 
 /// Renders the Dinopod Compose override that attaches the app to the proxy network.

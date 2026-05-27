@@ -9,7 +9,10 @@ use dinopod::config::DinopodConfig;
 use dinopod::fs::{AtomicFileSystem, AtomicWriter};
 use dinopod::lock::MutationGuard;
 use dinopod::names::derive_names;
-use dinopod::proxy::{render_proxy_compose, ProxyAction, ProxyManager, ProxyPaths, ProxyStatus};
+use dinopod::proxy::{
+    classify_proxy_container, render_proxy_compose, ProxyAction, ProxyManager, ProxyPaths,
+    ProxyRuntimeSpec, ProxyStatus,
+};
 use dinopod::routes::render_route;
 
 #[derive(Debug, Default)]
@@ -79,6 +82,30 @@ impl AtomicFileSystem for MemoryFileSystem {
         self.files.remove(path);
         Ok(())
     }
+}
+
+#[test]
+fn classify_proxy_container_should_require_matching_port_and_dynamic_mount() {
+    let config = DinopodConfig::default();
+    let paths = ProxyPaths::new(Path::new("/config/dinopod"));
+    let expected = ProxyRuntimeSpec::from_config(&config, &paths);
+    let healthy = format!(
+        "true\ttraefik:v3.6\t{{\"80/tcp\":[{{\"HostPort\":\"80\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
+        paths.dynamic_config_dir().display()
+    );
+    let wrong_port = format!(
+        "true\ttraefik:v3.6\t{{\"8080/tcp\":[{{\"HostPort\":\"8080\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
+        paths.dynamic_config_dir().display()
+    );
+
+    assert_eq!(
+        classify_proxy_container(&healthy, &expected),
+        ProxyStatus::Healthy
+    );
+    assert_eq!(
+        classify_proxy_container(&wrong_port, &expected),
+        ProxyStatus::NeedsRepair
+    );
 }
 
 #[test]

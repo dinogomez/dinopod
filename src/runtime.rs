@@ -15,7 +15,10 @@ use crate::errors::Result;
 use crate::fs::{AtomicFileSystem, AtomicWriter, StdAtomicFileSystem};
 use crate::git::{GitWorktreeManager, StdWorktreeFs, WorktreeRequest};
 use crate::lifecycle::LifecyclePorts;
-use crate::proxy::{render_proxy_compose, ProxyManager, ProxyPaths, ProxyStatus};
+use crate::proxy::{
+    classify_proxy_container, render_proxy_compose, ProxyManager, ProxyPaths, ProxyRuntimeSpec,
+    ProxyStatus, PROXY_INSPECT_FORMAT,
+};
 
 /// Lifecycle ports backed by local Git, Docker, and filesystem operations.
 #[derive(Clone, Debug)]
@@ -93,6 +96,7 @@ where
     }
 
     fn ensure_proxy(&self) -> Result<()> {
+        std::fs::create_dir_all(self.proxy_paths.dynamic_config_dir())?;
         let mut writer = AtomicWriter::new(StdAtomicFileSystem);
         writer.write_atomic(
             self.proxy_paths.compose_file(),
@@ -205,23 +209,17 @@ where
             "inspect".to_owned(),
             self.config.proxy.container_name.clone(),
             "--format".to_owned(),
-            "{{.State.Running}} {{.Config.Image}}".to_owned(),
+            PROXY_INSPECT_FORMAT.to_owned(),
         ];
         let output = self.runner.run(&CommandSpec::new("docker").args(args))?;
         if !output.success() {
             return Ok(ProxyStatus::Stopped);
         }
 
-        let mut fields = output.stdout().split_whitespace();
-        let running = fields.next();
-        let image = fields.next();
-        match (running, image) {
-            (Some("true"), Some(image)) if image == self.config.proxy.image => {
-                Ok(ProxyStatus::Healthy)
-            }
-            (Some("true"), Some(_)) => Ok(ProxyStatus::NeedsRepair),
-            _ => Ok(ProxyStatus::Stopped),
-        }
+        Ok(classify_proxy_container(
+            output.stdout().trim_end(),
+            &ProxyRuntimeSpec::from_config(&self.config, &self.proxy_paths),
+        ))
     }
 }
 

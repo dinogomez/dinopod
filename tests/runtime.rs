@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
+use std::path::Path;
 use std::process;
 
 use dinopod::cmd::{CommandOutput, CommandRunner, CommandSpec};
@@ -47,6 +48,34 @@ impl CommandRunner for &RecordingRunner {
     }
 }
 
+fn proxy_inspect_output(image: &str, port: u16, dynamic_dir: &Path) -> String {
+    format!(
+        "true\t{image}\t{{\"{port}/tcp\":[{{\"HostPort\":\"{port}\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
+        dynamic_dir.display()
+    )
+}
+
+#[test]
+fn ensure_proxy_should_create_dynamic_config_directory_before_starting_proxy() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "dinopod-runtime-dynamic-dir-test-{}",
+        process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    let proxy_paths = ProxyPaths::new(&temp_dir);
+    let dynamic_dir = proxy_paths.dynamic_config_dir().to_path_buf();
+    let runner = RecordingRunner::new(vec![
+        CommandOutput::successful(&proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir), ""),
+        CommandOutput::successful("", ""),
+        CommandOutput::successful("", ""),
+    ]);
+    let ports = CommandLifecyclePorts::new(&runner, DinopodConfig::default(), proxy_paths);
+
+    ports.ensure_proxy().expect("proxy should be ensured");
+
+    assert!(dynamic_dir.is_dir());
+}
+
 #[test]
 fn ensure_proxy_should_write_proxy_compose_before_starting_proxy() {
     let temp_dir =
@@ -74,7 +103,11 @@ fn ensure_proxy_should_reuse_running_proxy_with_expected_image() {
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
-    let runner = RecordingRunner::new(vec![CommandOutput::successful("true traefik:v3.6\n", "")]);
+    let dynamic_dir = temp_dir.join("proxy").join("dynamic");
+    let runner = RecordingRunner::new(vec![CommandOutput::successful(
+        &proxy_inspect_output("traefik:v3.6", 80, &dynamic_dir),
+        "",
+    )]);
     let ports = CommandLifecyclePorts::new(
         &runner,
         DinopodConfig::default(),
@@ -93,9 +126,40 @@ fn ensure_proxy_should_reuse_running_proxy_with_expected_image() {
             "inspect",
             "dinopod-traefik",
             "--format",
-            "{{.State.Running}} {{.Config.Image}}"
+            dinopod::proxy::PROXY_INSPECT_FORMAT,
         ]
     );
+}
+
+#[test]
+fn ensure_proxy_should_repair_running_proxy_with_stale_port_binding() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "dinopod-runtime-stale-port-proxy-test-{}",
+        process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+    let dynamic_dir = temp_dir.join("proxy").join("dynamic");
+    let runner = RecordingRunner::new(vec![
+        CommandOutput::successful(
+            &proxy_inspect_output("traefik:v3.6", 8080, &dynamic_dir),
+            "",
+        ),
+        CommandOutput::successful("", ""),
+        CommandOutput::successful("", ""),
+    ]);
+    let ports = CommandLifecyclePorts::new(
+        &runner,
+        DinopodConfig::default(),
+        ProxyPaths::new(&temp_dir),
+    );
+
+    ports
+        .ensure_proxy()
+        .expect("stale port binding should trigger repair");
+
+    let commands = runner.commands();
+    assert_eq!(commands[1].arguments(), ["rm", "-f", "dinopod-traefik"]);
 }
 
 #[test]
@@ -106,8 +170,9 @@ fn ensure_proxy_should_repair_running_proxy_with_wrong_image() {
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+    let dynamic_dir = temp_dir.join("proxy").join("dynamic");
     let runner = RecordingRunner::new(vec![
-        CommandOutput::successful("true traefik:v2.11\n", ""),
+        CommandOutput::successful(&proxy_inspect_output("traefik:v2.11", 80, &dynamic_dir), ""),
         CommandOutput::successful("", ""),
         CommandOutput::successful("", ""),
     ]);
