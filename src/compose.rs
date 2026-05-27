@@ -170,17 +170,13 @@ pub fn inspect_compose_config(input: &str, app_service: &str) -> Result<ComposeI
         });
     };
 
-    if !services.contains_key(app_service) {
+    let Some(app_service_value) = services.get(app_service) else {
         return Err(DinopodError::ComposeServiceMissing {
             service: app_service.to_owned(),
         });
-    }
-
-    let attach_implicit_default_network = service_uses_implicit_default_network(
-        services
-            .get(app_service)
-            .expect("app service presence was checked above"),
-    );
+    };
+    let attach_implicit_default_network =
+        service_uses_implicit_default_network(app_service_value);
 
     let mut warnings = Vec::new();
     for (service_name, service) in services {
@@ -196,8 +192,7 @@ pub fn inspect_compose_config(input: &str, app_service: &str) -> Result<ComposeI
 
 fn service_uses_implicit_default_network(service: &Value) -> bool {
     match service.get("networks") {
-        None => true,
-        Some(Value::Null) => true,
+        None | Some(Value::Null) => true,
         Some(Value::Object(networks)) if networks.is_empty() => true,
         Some(Value::Array(networks)) if networks.is_empty() => true,
         Some(_) => false,

@@ -159,12 +159,7 @@ where
             spec.names.ticket_slug.as_str(),
             &self.config.app.default_branch,
         )?;
-        let user_compose_path = spec
-            .record
-            .user_compose_path
-            .as_ref()
-            .expect("dev environments always track a user compose file");
-        let compose_inspection = self.ports.inspect_user_compose(user_compose_path)?;
+        let compose_inspection = self.ports.inspect_user_compose(&spec.user_compose_path)?;
         self.ports.write_compose_override(
             &spec.compose_override_path,
             &render_override(
@@ -311,10 +306,11 @@ where
                 url,
                 worktree_path,
                 route_path,
-                user_compose_path: Some(user_compose_path),
+                user_compose_path: Some(user_compose_path.clone()),
                 compose_override_path: Some(compose_override_path.clone()),
                 status: EnvironmentStatus::Running,
             },
+            user_compose_path,
             compose_override_path,
             names,
         })
@@ -366,6 +362,7 @@ fn environment_url(host: &str, http_port: u16) -> String {
 #[derive(Debug)]
 struct EnvironmentSpec {
     record: EnvironmentRecord,
+    user_compose_path: PathBuf,
     compose_override_path: PathBuf,
     names: EnvironmentNames,
 }
