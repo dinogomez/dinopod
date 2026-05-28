@@ -451,9 +451,18 @@ where
         project_name.to_owned(),
         "-f".to_owned(),
         path_display(files.user_file()),
+    ];
+    let user_override = files
+        .user_file()
+        .with_file_name("docker-compose.override.yml");
+    if user_override.is_file() {
+        compose_args.push("-f".to_owned());
+        compose_args.push(path_display(&user_override));
+    }
+    compose_args.extend([
         "-f".to_owned(),
         path_display(files.override_file()),
-    ];
+    ]);
     compose_args.extend(args.into_iter().map(Into::into));
     CommandSpec::new("docker").args(compose_args)
 }

@@ -289,6 +289,9 @@ where
             return Ok(ComposeInspection::default());
         };
         let inspection = self.inspect_user_compose_file(user_file)?;
+        if services.is_empty() {
+            return Ok(inspection);
+        }
         let files = ComposeFiles::new(user_file, override_file);
         let command = build_compose_infra_up_command(project, &files, services.iter().cloned());
         let output = self.runner.run(&command)?;

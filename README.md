@@ -13,8 +13,8 @@ curl -fsSL https://install.dinopod.dev | sh
 Supported platforms: Linux x86_64 (glibc), macOS Intel, and macOS Apple Silicon. Pin a version or install directory with environment variables:
 
 ```sh
-DINOPOD_VERSION=v0.1.0 curl -fsSL https://install.dinopod.dev | sh
-DINOPOD_INSTALL_DIR=~/bin curl -fsSL https://install.dinopod.dev | sh
+curl -fsSL https://install.dinopod.dev | DINOPOD_VERSION=v0.1.0 sh
+curl -fsSL https://install.dinopod.dev | DINOPOD_INSTALL_DIR=~/bin sh
 ```
 
 Upgrade by re-running the same curl command.

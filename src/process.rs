@@ -116,20 +116,24 @@ pub fn process_is_alive(pid: u32) -> bool {
 }
 
 /// Builds a detached dev-process spawn command that prints the child PID.
-#[must_use]
+///
+/// # Errors
+///
+/// Returns [`DinopodError::DevProcessSpawnFailed`] when an environment key is not
+/// a valid shell identifier.
 pub fn build_spawn_command(
     worktree_root: &Path,
     package_manager: PackageManager,
     script: &str,
     log_file: &Path,
     env: &[(String, String)],
-) -> CommandSpec {
+) -> Result<CommandSpec> {
     let script_command = script_invocation(package_manager, script);
     let log_path = shell_quote(&path_display(log_file));
     let exports = env
         .iter()
-        .map(|(key, value)| format!("export {key}={}", shell_quote(value)))
-        .collect::<Vec<_>>()
+        .map(|(key, value)| shell_export(key, value))
+        .collect::<Result<Vec<_>>>()?
         .join("; ");
     let prefix = if exports.is_empty() {
         String::new()
@@ -140,10 +144,10 @@ pub fn build_spawn_command(
         "{prefix}export HOSTNAME=0.0.0.0; nohup {script_command} >> {log_path} 2>&1 & echo $!"
     );
 
-    CommandSpec::new("sh")
+    Ok(CommandSpec::new("sh")
         .arg("-c")
         .arg(shell)
-        .current_dir(worktree_root.to_path_buf())
+        .current_dir(worktree_root.to_path_buf()))
 }
 
 /// Spawns a detached dev script in the worktree.
@@ -168,7 +172,7 @@ pub fn spawn_dev_process<R: CommandRunner, F: ProcessFs>(
     )
     .map_err(DinopodError::Io)?;
 
-    let command = build_spawn_command(worktree_root, package_manager, script, &paths.log_file, env);
+    let command = build_spawn_command(worktree_root, package_manager, script, &paths.log_file, env)?;
     let output = runner.run(&command)?;
     if !output.success() {
         return Err(DinopodError::DevProcessSpawnFailed {
@@ -474,6 +478,26 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
+fn is_shell_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_alphabetic() || first == '_' => {}
+        _ => return false,
+    }
+    chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn shell_export(key: &str, value: &str) -> Result<String> {
+    if !is_shell_env_key(key) {
+        return Err(DinopodError::DevProcessSpawnFailed {
+            stderr: format!(
+                "environment key `{key}` is not a valid shell identifier; rename it in your dotenv files"
+            ),
+        });
+    }
+    Ok(format!("export {key}={}", shell_quote(value)))
+}
+
 fn terminate_process_tree(pid: u32) {
     #[cfg(unix)]
     {
@@ -551,6 +575,20 @@ mod tests {
         assert_eq!(
             format_exec_command("pnpm", &["dev:all".to_owned()]),
             "pnpm dev:all"
+        );
+    }
+
+    #[test]
+    fn shell_export_should_reject_invalid_env_keys() {
+        let error = shell_export("FOO-BAR", "value").expect_err("hyphenated keys should fail");
+        assert!(matches!(error, DinopodError::DevProcessSpawnFailed { .. }));
+    }
+
+    #[test]
+    fn shell_export_should_quote_values() {
+        assert_eq!(
+            shell_export("DATABASE_URL", "postgres://host/db").expect("valid key"),
+            "export DATABASE_URL='postgres://host/db'"
         );
     }
 

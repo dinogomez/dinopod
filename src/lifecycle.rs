@@ -373,7 +373,13 @@ where
             return Err(error);
         }
 
-        if worktree_action == WorktreeAction::Created {
+        let record_persisted = self
+            .state
+            .load()?
+            .get(&spec.record.project)
+            .is_some_and(|record| record.status == EnvironmentStatus::Running);
+
+        if !record_persisted {
             for command in &self.config.setup.commands {
                 lifecycle_progress(ui, &format!("running setup: {command}"));
                 if let Err(error) =

@@ -14,7 +14,7 @@
 #
 # Upgrade: re-run this installer (idempotent overwrite).
 
-set -euo pipefail
+set -eu
 
 GITHUB_REPO="${DINOPOD_GITHUB_REPO:-dinogomez/dinopod}"
 INSTALL_DIR="${DINOPOD_INSTALL_DIR:-${HOME}/.local/bin}"
