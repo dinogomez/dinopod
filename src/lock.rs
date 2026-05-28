@@ -5,6 +5,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::process::process_is_alive;
+
 const DEFAULT_STALE_GUARD_AFTER: Duration = Duration::from_hours(1);
 
 /// Best-effort exclusive guard represented by a create-new guard file.
@@ -46,7 +48,7 @@ impl MutationGuard {
         match create_guard(path, now) {
             Ok(guard) => Ok(Some(guard)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                if guard_is_stale(path, now, stale_after)? {
+                if guard_is_stale(path, now, stale_after)? || guard_holder_is_dead(path)? {
                     fs::remove_file(path)?;
                     create_guard(path, now).map(Some)
                 } else {
@@ -119,8 +121,56 @@ fn parse_token(content: &str) -> Option<String> {
     })
 }
 
+fn parse_pid(content: &str) -> Option<u32> {
+    content.lines().find_map(|line| {
+        line.strip_prefix("pid=")
+            .and_then(|value| value.parse().ok())
+    })
+}
+
+fn guard_holder_is_dead(path: &Path) -> io::Result<bool> {
+    let content = fs::read_to_string(path)?;
+    let Some(pid) = parse_pid(&content) else {
+        return Ok(false);
+    };
+    Ok(!process_is_alive(pid))
+}
+
+/// Returns a lock-unavailable error with holder pid details when known.
+#[must_use]
+pub fn lock_unavailable_error(path: PathBuf) -> crate::errors::DinopodError {
+    let detail = fs::read_to_string(&path)
+        .ok()
+        .and_then(|content| parse_pid(&content))
+        .map(|pid| format!(" (pid {pid})"))
+        .unwrap_or_default();
+    crate::errors::DinopodError::LockUnavailable { path, detail }
+}
+
 fn unix_seconds(time: SystemTime) -> io::Result<u64> {
     time.duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .map_err(io::Error::other)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_acquire_should_recover_guard_when_holder_pid_is_dead() {
+        let path =
+            std::env::temp_dir().join(format!("dinopod-lock-dead-pid-test-{}", std::process::id()));
+        let _ = fs::remove_file(&path);
+        fs::write(&path, "pid=999999\ncreated_at_unix_seconds=0\ntoken=dead\n")
+            .expect("lock fixture should be writable");
+
+        let guard = MutationGuard::try_acquire(&path)
+            .expect("dead pid recovery should not error")
+            .expect("dead pid lock should be replaced");
+
+        assert!(path.is_file());
+        drop(guard);
+        let _ = fs::remove_file(path);
+    }
 }

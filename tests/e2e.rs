@@ -21,8 +21,8 @@ fn docker_smoke_should_start_two_ticket_environments_and_cleanup() -> Result<(),
     let second_stdout = String::from_utf8(second.stdout)?;
     let rerun_stdout = String::from_utf8(rerun.stdout)?;
 
-    assert!(first_stdout.contains("project: dinopod-smoke-repo-jira-123"));
-    assert!(second_stdout.contains("project: dinopod-smoke-repo-jira-456"));
+    assert!(first_stdout.contains("  🦕 project  dinopod-smoke-repo-jira-123"));
+    assert!(second_stdout.contains("  🦕 project  dinopod-smoke-repo-jira-456"));
     assert!(rerun_stdout.contains("http://jira-123-dinopod-smoke-repo.localhost"));
 
     wait_for_response(

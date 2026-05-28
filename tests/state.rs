@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 
 use dinopod::compose::ComposeInspection;
 use dinopod::config::DinopodConfig;
+use dinopod::detect::PackageManager;
 use dinopod::errors::DinopodError;
+use dinopod::git::WorktreeAction;
 use dinopod::lifecycle::{DevSummary, LifecycleManager, LifecyclePorts};
 use dinopod::state::{EnvironmentRecord, EnvironmentStatus, InMemoryStateStore, StateStore};
 
@@ -33,21 +35,54 @@ impl LifecyclePorts for FakePorts {
         worktree_path: &Path,
         branch: &str,
         default_branch: &str,
-    ) -> Result<(), DinopodError> {
+    ) -> Result<WorktreeAction, DinopodError> {
         self.calls.borrow_mut().push(format!(
             "worktree:{}:{}:{}",
             worktree_path.display(),
             branch,
             default_branch
         ));
-        Ok(())
+        Ok(WorktreeAction::Created)
     }
 
     fn inspect_user_compose(&self, user_file: &Path) -> Result<ComposeInspection, DinopodError> {
         self.calls
             .borrow_mut()
             .push(format!("inspect-compose:{}", user_file.display()));
-        Ok(ComposeInspection::default())
+        Ok(ComposeInspection::with_service_names(
+            vec!["app".to_owned()],
+        ))
+    }
+
+    fn inspect_user_compose_merged(
+        &self,
+        user_file: &Path,
+    ) -> Result<(ComposeInspection, String), DinopodError> {
+        self.calls
+            .borrow_mut()
+            .push(format!("inspect-compose-merged:{}", user_file.display()));
+        Ok((
+            ComposeInspection::with_service_names(vec!["db".to_owned(), "redis".to_owned()]),
+            r#"{"services":{"db":{"ports":[{"target":5432,"published":"5433"}]},"redis":{}}}"#
+                .to_owned(),
+        ))
+    }
+
+    fn inspect_compose_stack(
+        &self,
+        user_file: &Path,
+        dinopod_override: &Path,
+    ) -> Result<(ComposeInspection, String), DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "inspect-compose-stack:{}:{}",
+            user_file.display(),
+            dinopod_override.display()
+        ));
+        Ok((
+            ComposeInspection::with_service_names(vec!["db".to_owned(), "redis".to_owned()]),
+            r#"{"services":{"db":{"ports":[{"target":5432,"published":"54321"}]},"redis":{"ports":[{"target":6379,"published":"63210"}]}}}"#
+                .to_owned(),
+        ))
     }
 
     fn write_compose_override(&self, path: &Path, _contents: &str) -> Result<(), DinopodError> {
@@ -143,6 +178,119 @@ impl LifecyclePorts for FakePorts {
             .iter()
             .any(|candidate| candidate == project))
     }
+
+    fn copy_env_on_create(
+        &self,
+        primary_root: &Path,
+        worktree_root: &Path,
+    ) -> Result<(), DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "copy-env:{}:{}",
+            primary_root.display(),
+            worktree_root.display()
+        ));
+        Ok(())
+    }
+
+    fn sync_missing_env(
+        &self,
+        source_root: &Path,
+        worktree_root: &Path,
+    ) -> Result<(), DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "sync-env:{}:{}",
+            source_root.display(),
+            worktree_root.display()
+        ));
+        Ok(())
+    }
+
+    fn refresh_env(&self, source_root: &Path, worktree_root: &Path) -> Result<(), DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "refresh-env:{}:{}",
+            source_root.display(),
+            worktree_root.display()
+        ));
+        Ok(())
+    }
+
+    fn install_dependencies(
+        &self,
+        worktree_root: &Path,
+        package_manager: PackageManager,
+    ) -> Result<(), DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "install:{}:{package_manager:?}",
+            worktree_root.display()
+        ));
+        Ok(())
+    }
+
+    fn compose_up_infra(
+        &self,
+        project: &str,
+        compose_files: &[PathBuf],
+        services: &[String],
+    ) -> Result<ComposeInspection, DinopodError> {
+        self.calls
+            .borrow_mut()
+            .push(format!("compose-up-infra:{project}:{}", services.join(",")));
+        self.compose_files.borrow_mut().push(compose_files.to_vec());
+        Ok(ComposeInspection::default())
+    }
+
+    fn compose_up_all(
+        &self,
+        project: &str,
+        compose_files: &[PathBuf],
+    ) -> Result<ComposeInspection, DinopodError> {
+        self.calls
+            .borrow_mut()
+            .push(format!("compose-up-all:{project}"));
+        self.compose_files.borrow_mut().push(compose_files.to_vec());
+        if self.fail_compose_up {
+            return Err(DinopodError::DockerCommandFailed {
+                args: vec!["compose".to_owned(), "up".to_owned()],
+                exit_code: Some(1),
+                stderr: "compose failed".to_owned(),
+            });
+        }
+        self.running_projects.borrow_mut().push(project.to_owned());
+        Ok(ComposeInspection::default())
+    }
+
+    fn run_setup_command(
+        &self,
+        worktree_root: &Path,
+        command: &str,
+        _env: &[(String, String)],
+    ) -> Result<(), DinopodError> {
+        self.calls
+            .borrow_mut()
+            .push(format!("setup:{}:{command}", worktree_root.display()));
+        Ok(())
+    }
+
+    fn spawn_dev_process(
+        &self,
+        worktree_root: &Path,
+        package_manager: PackageManager,
+        script: &str,
+        _env: &[(String, String)],
+    ) -> Result<u32, DinopodError> {
+        self.calls.borrow_mut().push(format!(
+            "spawn-dev:{}:{package_manager:?}:{script}",
+            worktree_root.display()
+        ));
+        Ok(4242)
+    }
+
+    fn stop_dev_process(&self, worktree_root: &Path) -> Result<(), DinopodError> {
+        self.calls
+            .borrow_mut()
+            .push(format!("stop-dev:{}", worktree_root.display()));
+        Ok(())
+    }
 }
 
 struct FailingStateStore {
@@ -175,6 +323,7 @@ fn manager_with_config<'a>(
         config,
         "MyApp",
         Path::new("/repo/myapp"),
+        Path::new("/repo/myapp"),
         Path::new("/config/dinopod"),
         ports,
         state,
@@ -196,6 +345,8 @@ fn dev_should_orchestrate_environment_creation_and_write_state() {
             project: "myapp-jira-123".to_owned(),
             url: "http://jira-123-myapp.localhost".to_owned(),
             warnings: Vec::new(),
+            native_dev: None,
+            background_pid: None,
         }
     );
     assert_eq!(
@@ -298,6 +449,7 @@ fn dev_should_report_state_persist_failure_after_compose_up() {
         DinopodConfig::default(),
         "MyApp",
         Path::new("/repo/myapp"),
+        Path::new("/repo/myapp"),
         Path::new("/config/dinopod"),
         &ports,
         &state,
@@ -327,6 +479,11 @@ fn list_should_not_mutate_state_without_reconcile() {
             user_compose_path: None,
             compose_override_path: None,
             status: EnvironmentStatus::Running,
+            runtime_mode: None,
+            dev_script: None,
+            app_host_port: None,
+            env_overlay_path: None,
+            port_plan: None,
         }])
         .expect("state save should work");
     let manager = manager(&ports, &state);
@@ -352,6 +509,11 @@ fn list_reconcile_should_mark_missing_docker_project_as_stale() {
             user_compose_path: None,
             compose_override_path: None,
             status: EnvironmentStatus::Running,
+            runtime_mode: None,
+            dev_script: None,
+            app_host_port: None,
+            env_overlay_path: None,
+            port_plan: None,
         }])
         .expect("state save should work");
     let manager = manager(&ports, &state);
@@ -371,7 +533,7 @@ fn down_should_remove_route_and_preserve_volumes_by_default() {
     manager.dev("JIRA-123").expect("dev should create state");
 
     manager
-        .down("JIRA-123", false)
+        .down("JIRA-123", false, None)
         .expect("down should remove containers and route");
 
     assert!(ports
@@ -399,7 +561,7 @@ fn rm_should_require_confirmation_before_removing_worktree() {
     manager.dev("JIRA-123").expect("dev should create state");
 
     let error = manager
-        .rm("JIRA-123", false)
+        .rm("JIRA-123", false, None)
         .expect_err("rm without confirmation should fail");
 
     assert!(matches!(error, DinopodError::ConfirmationRequired { .. }));
@@ -412,7 +574,9 @@ fn forced_rm_should_remove_route_project_worktree_and_state() {
     let manager = manager(&ports, &state);
     manager.dev("JIRA-123").expect("dev should create state");
 
-    manager.rm("JIRA-123", true).expect("forced rm should run");
+    manager
+        .rm("JIRA-123", true, None)
+        .expect("forced rm should run");
 
     assert!(ports
         .calls()
@@ -430,11 +594,11 @@ fn rm_after_down_should_succeed_when_route_is_already_removed() {
     let manager = manager(&ports, &state);
     manager.dev("JIRA-123").expect("dev should create state");
     manager
-        .down("JIRA-123", false)
+        .down("JIRA-123", false, None)
         .expect("down should remove route");
 
     manager
-        .rm("JIRA-123", true)
+        .rm("JIRA-123", true, None)
         .expect("rm should succeed after down already removed the route");
 
     assert!(state.load().expect("state should load").is_empty());

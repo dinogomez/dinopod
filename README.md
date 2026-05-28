@@ -4,11 +4,30 @@ Dinopod is a Rust CLI for isolated per-ticket local development environments. It
 
 ## Install
 
-The intended release path is a prebuilt binary from GitHub Releases with a matching SHA-256 checksum. Contributor installs can use Cargo:
+Install the latest release:
+
+```sh
+curl -fsSL https://install.dinopod.dev | sh
+```
+
+Supported platforms: Linux x86_64 (glibc), macOS Intel, and macOS Apple Silicon. Pin a version or install directory with environment variables:
+
+```sh
+DINOPOD_VERSION=v0.1.0 curl -fsSL https://install.dinopod.dev | sh
+DINOPOD_INSTALL_DIR=~/bin curl -fsSL https://install.dinopod.dev | sh
+```
+
+Upgrade by re-running the same curl command.
+
+Manual install: download the prebuilt binary for your platform from [GitHub Releases](https://github.com/dinogomez/dinopod/releases) and verify the matching `.sha256` checksum file.
+
+Contributor installs can use Cargo:
 
 ```sh
 cargo install --path .
 ```
+
+Operator setup for `install.dinopod.dev` is documented in [docs/install-dns.md](docs/install-dns.md).
 
 Runtime dependencies are intentionally narrow:
 
@@ -19,30 +38,38 @@ Runtime dependencies are intentionally narrow:
 
 ## Basic Workflow
 
-Initialize configuration:
+Initialize configuration (interactive wizard, or defaults with `-y`):
 
 ```sh
 dinopod init
+dinopod init -y
 ```
 
-Start a ticket environment:
+Provision a pod (worktree + isolated Compose + setup commands from `dinopod.toml`):
 
 ```sh
-dinopod dev JIRA-123
+dinopod new number-1
 ```
 
-Expected successful `dev` output includes the worktree path, Compose project name, and local URL. Multiple tickets for the same repo get separate Git worktrees and Docker Compose project names.
+Run commands in the pod worktree (examples):
+
+```sh
+dinopod number-1 pnpm db:migrate
+dinopod number-1 pnpm dev:all
+```
 
 Lifecycle commands:
 
 ```sh
 dinopod list
 dinopod list --reconcile
-dinopod stop JIRA-123
-dinopod down JIRA-123
-dinopod down JIRA-123 --volumes
-dinopod rm JIRA-123 --yes
+dinopod stop number-1
+dinopod down number-1
+dinopod down number-1 --volumes
+dinopod rm number-1 --yes
 ```
+
+Do not put `docker compose up` in `[setup].commands` — Compose is started by `dinopod new`.
 
 ## Compose Requirements
 
@@ -56,7 +83,7 @@ The MVP uses Traefik with the file provider. Traefik does not mount `/var/run/do
 
 The default proxy image is `traefik:v3.6`; digest-pinned image references are supported through config.
 
-Concurrent lifecycle commands use a best-effort guard file under the Dinopod config directory. It prevents most accidental overlap but is not a kernel advisory lock.
+Concurrent mutating lifecycle commands (`new`, `stop`, `down`, `rm`, `list --reconcile`) use a best-effort guard file under the Dinopod config directory. Read-only commands (`list`, `dinopod <id> <command>` passthrough) do not hold the guard, so a long-running dev process in one terminal does not block other shells.
 
 ## Verification
 
@@ -70,7 +97,7 @@ cargo clippy --all-targets --all-features --locked -- -D warnings
 cargo deny check
 ```
 
-Release tags build platform archives and `.sha256` checksum files through GitHub Actions. Homebrew and shell installer support are intended follow-ups after the first binary release is stable.
+Release tags build platform archives and `.sha256` checksum files through GitHub Actions. Homebrew support is a planned follow-up.
 
 Optional Docker smoke coverage:
 

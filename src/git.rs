@@ -237,6 +237,18 @@ fn paths_match(left: &Path, right: &Path) -> bool {
     left == right
 }
 
+/// Returns true when `path` is the same as or nested inside `ancestor`.
+#[must_use]
+pub fn path_is_within(path: &Path, ancestor: &Path) -> bool {
+    let path = canonicalize_lossy(path);
+    let ancestor = canonicalize_lossy(ancestor);
+    path == ancestor || path.starts_with(&ancestor)
+}
+
+fn canonicalize_lossy(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
 fn parse_worktree_list(input: &str) -> Vec<WorktreeEntry> {
     let mut entries = Vec::new();
     let mut current_path = None;

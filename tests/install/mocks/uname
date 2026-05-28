@@ -1,0 +1,6 @@
+#!/bin/sh
+case "$1" in
+  -s) printf '%s\n' "${MOCK_UNAME_S:-$(command uname -s)}" ;;
+  -m) printf '%s\n' "${MOCK_UNAME_M:-$(command uname -m)}" ;;
+  *) command uname "$@" ;;
+esac

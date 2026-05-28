@@ -90,11 +90,11 @@ fn classify_proxy_container_should_require_matching_port_and_dynamic_mount() {
     let paths = ProxyPaths::new(Path::new("/config/dinopod"));
     let expected = ProxyRuntimeSpec::from_config(&config, &paths);
     let healthy = format!(
-        "true\ttraefik:v3.6\t{{\"80/tcp\":[{{\"HostPort\":\"80\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
+        "true\ttraefik:v3.6\t{{\"80/tcp\":[{{\"HostPort\":\"80\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]\t[\"host.docker.internal:host-gateway\"]",
         paths.resolved_dynamic_config_dir().display()
     );
     let wrong_port = format!(
-        "true\ttraefik:v3.6\t{{\"8080/tcp\":[{{\"HostPort\":\"8080\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
+        "true\ttraefik:v3.6\t{{\"8080/tcp\":[{{\"HostPort\":\"8080\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]\t[\"host.docker.internal:host-gateway\"]",
         paths.resolved_dynamic_config_dir().display()
     );
 
@@ -118,6 +118,7 @@ fn generated_proxy_compose_should_not_mount_docker_socket() {
     assert!(!compose.contains("docker.sock"));
     assert!(compose.contains("image: traefik:v3.6"));
     assert!(compose.contains("\"80:80\""));
+    assert!(compose.contains("host.docker.internal:host-gateway"));
 }
 
 #[test]

@@ -2,10 +2,12 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use dinopod::compose::{
-    build_compose_command, inspect_compose_config, render_override, ComposeFiles, ComposeFs,
+    build_compose_command, inspect_compose_config, inspect_compose_config_for_runtime,
+    render_infra_override, render_override, validate_infra_host_ports, ComposeFiles, ComposeFs,
     ComposeValidator, ComposeWarning,
 };
-use dinopod::config::DinopodConfig;
+use dinopod::config::{DinopodConfig, RuntimeMode};
+use dinopod::env::PortPlan;
 use dinopod::errors::DinopodError;
 use dinopod::names::derive_names;
 
@@ -172,6 +174,93 @@ fn generated_override_should_omit_default_for_explicit_only_networks() {
             "    name: dinopod-proxy\n",
         )
     );
+}
+
+#[test]
+fn native_compose_inspection_should_not_require_app_service() {
+    let inspection = inspect_compose_config_for_runtime(
+        r#"{"services":{"db":{},"redis":{}}}"#,
+        "app",
+        RuntimeMode::Native,
+    )
+    .expect("native infra compose should inspect");
+
+    assert_eq!(inspection.service_names(), ["db", "redis"]);
+}
+
+#[test]
+fn validate_infra_host_ports_should_reject_user_fixed_ports_before_dinopod_override() {
+    let compose_config = serde_json::from_str(
+        r#"{"services":{"db":{"ports":[{"target":5432,"published":"5433"}]},"redis":{}}}"#,
+    )
+    .expect("compose json should parse");
+    let port_plan = PortPlan {
+        app_host_port: 31000,
+        postgres_host_port: Some(54321),
+        redis_host_port: Some(63210),
+    };
+
+    let error = validate_infra_host_ports(&compose_config, "app", &port_plan)
+        .expect_err("user override port should conflict");
+
+    assert!(matches!(
+        error,
+        DinopodError::InfraHostPortConflict {
+            service,
+            published
+        } if service == "db" && published == 5433
+    ));
+}
+
+#[test]
+fn validate_infra_host_ports_should_accept_dinopod_allocated_ports() {
+    let user_compose = serde_json::from_str(
+        r#"{"services":{"db":{"ports":[{"target":5432,"published":"5433"}]},"redis":{"ports":[{"target":6379,"published":"6379"}]}}}"#,
+    )
+    .expect("compose json should parse");
+    let port_plan = PortPlan {
+        app_host_port: 31000,
+        postgres_host_port: Some(54321),
+        redis_host_port: Some(63210),
+    };
+    let infra_override = render_infra_override(
+        &user_compose,
+        "app",
+        &port_plan,
+        &["db".to_owned(), "redis".to_owned()],
+    );
+    let merged = serde_json::from_str::<serde_json::Value>(
+        r#"{"services":{"db":{"ports":[{"target":5432,"published":"54321"}]},"redis":{"ports":[{"target":6379,"published":"63210"}]}}}"#,
+    )
+    .expect("merged compose should parse");
+    let _ = infra_override;
+
+    validate_infra_host_ports(&merged, "app", &port_plan)
+        .expect("dinopod override ports should validate");
+}
+
+#[test]
+fn render_infra_override_should_replace_existing_port_mappings() {
+    let user_compose = serde_json::from_str(
+        r#"{"services":{"db":{"ports":[{"target":5432,"published":"5432"}]},"redis":{}}}"#,
+    )
+    .expect("compose json should parse");
+    let port_plan = PortPlan {
+        app_host_port: 31000,
+        postgres_host_port: Some(54321),
+        redis_host_port: Some(63210),
+    };
+
+    let override_yaml = render_infra_override(
+        &user_compose,
+        "app",
+        &port_plan,
+        &["db".to_owned(), "redis".to_owned()],
+    );
+
+    assert!(override_yaml.contains("ports: !override"));
+    assert!(override_yaml.contains("\"54321:5432\""));
+    assert!(override_yaml.contains("\"63210:6379\""));
 }
 
 #[test]

@@ -1,0 +1,17 @@
+{
+  "name": "promptwise-fixture",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:all": "concurrently \"next dev\" \"pnpm trigger:dev\"",
+    "build": "next build"
+  },
+  "dependencies": {
+    "next": "15.1.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.0"
+  }
+}
