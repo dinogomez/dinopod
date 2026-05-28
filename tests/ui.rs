@@ -1,6 +1,6 @@
 use std::io;
 
-use dinopod::ui::{BufferedUi, Ui};
+use dinopod::ui::{prompt_yes_no, BufferedUi, Ui};
 
 fn report_environment_ready<U>(ui: &mut U) -> io::Result<()>
 where
@@ -37,5 +37,13 @@ fn error_messages_should_go_to_stderr_boundary() {
     assert_eq!(
         ui.stderr(),
         ["missing required dependency: docker".to_owned()]
+    );
+}
+
+#[test]
+fn prompt_yes_no_should_return_none_when_stdin_is_not_a_tty() {
+    assert_eq!(
+        prompt_yes_no("Remove environment?").expect("prompt should not fail I/O"),
+        None
     );
 }

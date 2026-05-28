@@ -50,7 +50,7 @@ impl CommandRunner for &RecordingRunner {
 
 fn proxy_inspect_output(image: &str, port: u16, dynamic_dir: &Path) -> String {
     format!(
-        "true\t{image}\t{{\"{port}/tcp\":[{{\"HostPort\":\"{port}\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]",
+        "true\t{image}\t{{\"{port}/tcp\":[{{\"HostPort\":\"{port}\"}}]}}\t[{{\"Source\":\"{}\",\"Destination\":\"/etc/traefik/dynamic\"}}]\t[\"host.docker.internal:host-gateway\"]",
         dynamic_dir.display()
     )
 }

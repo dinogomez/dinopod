@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::RuntimeMode;
+use crate::env::PortPlan;
 use crate::errors::Result;
 use crate::fs::{AtomicWriter, StdAtomicFileSystem};
 
@@ -47,6 +49,21 @@ pub struct EnvironmentRecord {
     pub compose_override_path: Option<PathBuf>,
     /// Cached lifecycle status.
     pub status: EnvironmentStatus,
+    /// Selected runtime mode when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_mode: Option<RuntimeMode>,
+    /// Native dev script name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dev_script: Option<String>,
+    /// Host port for the native app process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_host_port: Option<u16>,
+    /// Generated env overlay path in the worktree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_overlay_path: Option<PathBuf>,
+    /// Persisted per-ticket port assignments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port_plan: Option<PortPlan>,
 }
 
 impl EnvironmentRecord {

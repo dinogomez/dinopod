@@ -12,7 +12,8 @@ use crate::errors::Result;
 /// Docker inspect format used to compare a running proxy with Dinopod config.
 pub const PROXY_INSPECT_FORMAT: &str = concat!(
     "{{.State.Running}}\t{{.Config.Image}}\t",
-    "{{json .HostConfig.PortBindings}}\t{{json .Mounts}}"
+    "{{json .HostConfig.PortBindings}}\t{{json .Mounts}}\t",
+    "{{json .HostConfig.ExtraHosts}}"
 );
 
 /// Filesystem paths for Dinopod-managed proxy assets.
@@ -97,6 +98,7 @@ pub fn classify_proxy_container(inspect_stdout: &str, expected: &ProxyRuntimeSpe
     };
     let port_bindings = fields.next().unwrap_or("null");
     let mounts = fields.next().unwrap_or("null");
+    let extra_hosts = fields.next().unwrap_or("null");
 
     if running != "true" {
         return ProxyStatus::Stopped;
@@ -110,8 +112,24 @@ pub fn classify_proxy_container(inspect_stdout: &str, expected: &ProxyRuntimeSpe
     if !dynamic_mount_matches(mounts, &expected.dynamic_config_dir) {
         return ProxyStatus::NeedsRepair;
     }
+    if !extra_hosts_match(extra_hosts) {
+        return ProxyStatus::NeedsRepair;
+    }
 
     ProxyStatus::Healthy
+}
+
+fn extra_hosts_match(extra_hosts_json: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(extra_hosts_json) else {
+        return false;
+    };
+    value.as_array().is_some_and(|hosts| {
+        hosts.iter().any(|entry| {
+            entry
+                .as_str()
+                .is_some_and(|host| host.starts_with("host.docker.internal:"))
+        })
+    })
 }
 
 fn host_port_matches(bindings_json: &str, port: u16) -> bool {
@@ -295,6 +313,8 @@ pub fn render_proxy_compose(config: &DinopodConfig, paths: &ProxyPaths) -> Strin
             "      - \"{port}:{port}\"\n",
             "    volumes:\n",
             "      - {dynamic_dir}:/etc/traefik/dynamic:ro\n",
+            "    extra_hosts:\n",
+            "      - \"host.docker.internal:host-gateway\"\n",
             "    networks:\n",
             "      - {network}\n",
             "networks:\n",

@@ -42,3 +42,21 @@ jobs:
 
       - name: Check dependency policy
         run: cargo deny check
+
+  installer:
+    name: Install script checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck and bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck bats
+
+      - name: Shellcheck install script
+        run: shellcheck scripts/install.sh
+
+      - name: Run install script tests
+        run: bats tests/install

@@ -25,3 +25,6 @@ nonstandard_style = { level = "deny", priority = -1 }
 all = { level = "deny", priority = 10 }
 perf = { level = "deny", priority = 9 }
 pedantic = { level = "warn", priority = 1 }
+# New lifecycle/config surface; document in a follow-up pass.
+missing_errors_doc = { level = "allow", priority = 2 }
+missing_panics_doc = { level = "allow", priority = 2 }

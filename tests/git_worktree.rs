@@ -208,3 +208,13 @@ fn primary_worktree_resolution_should_return_first_git_worktree() {
 
     assert_eq!(root, PathBuf::from("/repo/myapp"));
 }
+
+#[test]
+fn path_is_within_should_match_worktree_root_and_nested_paths() {
+    use dinopod::git::path_is_within;
+
+    let worktree = PathBuf::from("/repo/.dinopod-worktrees/myapp-jira-123");
+    assert!(path_is_within(&worktree, &worktree));
+    assert!(path_is_within(&worktree.join("src/app"), &worktree));
+    assert!(!path_is_within(Path::new("/repo/myapp"), &worktree));
+}

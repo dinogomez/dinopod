@@ -36,6 +36,15 @@ pub enum NameError {
     InvalidTicketCharacters,
 }
 
+/// Returns a normalized repository slug for port allocation and naming.
+///
+/// # Errors
+///
+/// Returns [`NameError::EmptyRepoSlug`] when normalization produces no usable characters.
+pub fn repo_slug(repo_name: &str) -> Result<String, NameError> {
+    normalize_to_string(repo_name).ok_or(NameError::EmptyRepoSlug)
+}
+
 /// Normalizes arbitrary input into a lowercase slug safe for local hostnames.
 ///
 /// # Errors
